@@ -1,0 +1,25 @@
+apiVersion: telepresence.mr.telepresence/v1
+kind: Session
+metadata:
+  labels:
+    app.kubernetes.io/name: telepresencekubctrl
+    app.kubernetes.io/managed-by: kustomize
+  name: session-1
+spec:
+  services:
+    items:
+      - template:
+          spec:
+            containers:
+              - name: nginx
+                image: nginx:latest
+                ports:
+                  - containerPort: 80
+      - template:
+          spec:
+            containers:
+              - name: clientpolling
+                image: clientpolling:latest
+                imagePullPolicy: Never
+                ports:
+                  - containerPort: 8080
