@@ -23,3 +23,6 @@ spec:
                 imagePullPolicy: Never
                 ports:
                   - containerPort: 8080
+  timeoutSeconds: 90
+  pollingIntervalSeconds: 120
+  pollingHook:

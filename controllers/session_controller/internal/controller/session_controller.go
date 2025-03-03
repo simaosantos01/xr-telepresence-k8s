@@ -18,11 +18,7 @@ package controller
 
 import (
 	"context"
-	"encoding/json"
-	"io"
 	"time"
-
-	"net/http"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -30,8 +26,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	clientpolling "mr.telepresence/clientpolling/types"
 
 	telepresencev1 "mr.telepresence/controller/api/v1"
 )
@@ -80,10 +74,14 @@ func (r *SessionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		if len(sessionPods.Items) == len(session.Spec.Services.Items) {
 			sessionIsReady := true
 
-			for _, pod := range sessionPods.Items {
+			for _, pod := range sessionPods.Items { // todo: check pod ready condition
 				if pod.Status.Phase != corev1.PodRunning {
-					sessionIsReady = false
+					return &result, false, nil
 				}
+			}
+
+			if err := r.setCondition(ctx, session, TypeReady, metav1.ConditionTrue, "AllPodsRunning", "Session is ready to accept clients"); err != nil {
+
 			}
 
 			return &result, sessionIsReady, nil
@@ -126,6 +124,7 @@ func (r *SessionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	podsToCreate, sessionIsReady, err := constructSessionPods(&session, ctx, &req)
+
 	if err != nil {
 		logger.Error(err, "unable to construct session pods")
 		return ctrl.Result{}, err
@@ -141,36 +140,9 @@ func (r *SessionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	// Evaluate if session must be deleted
 
-	evaluateSession := func(session *telepresencev1.Session) (bool, error) {
-		//url := "http://" + session.Name + "-clientpolling.clientpolling." + session.Namespace + ".svc.cluster.local:8080/"
-		url := "http://localhost:8080"
-
-		resp, err := http.Get(url)
-		if err != nil {
-			return false, err
-		}
-
-		defer resp.Body.Close()
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return false, err
-		}
-
-		var pollingData clientpolling.PollingData
-		if err := json.Unmarshal(body, &pollingData); err != nil {
-			return false, err
-		}
-
-		if pollingData.Clients == 0 {
-			return true, nil
-		}
-
-		return false, nil
-	}
-
 	if sessionIsReady {
-		delete, err := evaluateSession(&session)
+		delete, clientCount, err := r.evaluateSession(&session)
+		logger.Info("client count", "count", clientCount)
 		if err != nil {
 			logger.Error(err, "unable to evaluate session", "session", session.Name)
 			return ctrl.Result{}, err
@@ -183,6 +155,14 @@ func (r *SessionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 				return ctrl.Result{}, err
 			}
 			return ctrl.Result{}, nil
+		} else {
+			// update 'ClientCount' status field
+			session.Status.ClientCount = clientCount
+
+			if err := r.Client.Status().Update(ctx, &session); err != nil {
+				logger.Error(err, "unable to update status field 'ClientCount'", "session", session.Name)
+				return ctrl.Result{}, err
+			}
 		}
 	}
 

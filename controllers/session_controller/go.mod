@@ -119,4 +119,4 @@ require (
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
 
-replace mr.telepresence/clientpolling => ./clientPolling
+replace mr.telepresence/clientpolling => ../../polling_service

@@ -17,7 +17,6 @@ limitations under the License.
 package v1
 
 import (
-	"github.com/golang/protobuf/ptypes/timestamp"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -34,18 +33,9 @@ type SessionSpec struct {
 
 // SessionStatus defines the observed state of Session.
 type SessionStatus struct {
-	ClientCount          int16                   `json:"clientCount,omitempty"`
-	ClientCountUpdatedAt timestamp.Timestamp     `json:"clientCountUpdatedAt,omitempty"`
-	LatestPollingAt      metav1.Timestamp        `json:"latestPollingAt,omitempty"`
-	LatestPollingStatus  LatestPollingStatusType `json:"latestPollingStatus,omitempty"`
+	ClientCount int16              `json:"clientCount,omitempty"`
+	Conditions  []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 }
-
-type LatestPollingStatusType string
-
-const (
-	PollingSucceeded LatestPollingStatusType = "Succeeded"
-	PollingFailed    LatestPollingStatusType = "Failed"
-)
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
