@@ -26,15 +26,15 @@ import (
 
 // SessionSpec defines the desired state of Session.
 type SessionSpec struct {
-	Services               corev1.PodTemplateList `json:"services,omitempty"`
-	TimeoutSeconds         int32                  `json:"timeoutSeconds,omitempty"`
-	PollingIntervalSeconds int32                  `json:"pollingIntervalSeconds,omitempty"`
+	Services           corev1.PodTemplateList `json:"services,omitempty"`
+	BackgroundServices corev1.PodTemplateList `json:"backgroundServices,omitempty"`
+	Clients            []string               `json:"clients,omitempty"`
+	TimeoutSeconds     int32                  `json:"timeoutSeconds,omitempty"`
 }
 
 // SessionStatus defines the observed state of Session.
 type SessionStatus struct {
-	ClientCount int16              `json:"clientCount,omitempty"`
-	Conditions  []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 }
 
 // +kubebuilder:object:root=true

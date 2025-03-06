@@ -157,7 +157,7 @@ func (r *SessionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			return ctrl.Result{}, nil
 		} else {
 			// update 'ClientCount' status field
-			session.Status.ClientCount = clientCount
+			//session.Status.ClientCount = clientCount
 
 			if err := r.Client.Status().Update(ctx, &session); err != nil {
 				logger.Error(err, "unable to update status field 'ClientCount'", "session", session.Name)

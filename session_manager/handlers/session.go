@@ -3,33 +3,39 @@ package handlers
 import (
 	"net/http"
 
-	k8sclient "telepresence-k8s/session-manager/k8sClient"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/gin-gonic/gin"
+	corev1 "k8s.io/api/core/v1"
+	telepresencev1 "mr.telepresence/controller/api/v1"
 )
 
-func RegisterSession(ctx *gin.Context) {
-	value, exists := ctx.Get("clientset")
-	if !exists {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Kubernetes client not found"})
+func (h *Handler) RegisterSession(ctx *gin.Context) {
+	session := telepresencev1.Session{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "session-1",
+		},
+		Spec: telepresencev1.SessionSpec{
+			Services: corev1.PodTemplateList{
+				Items: []corev1.PodTemplate{},
+			},
+			BackgroundServices: corev1.PodTemplateList{
+				Items: []corev1.PodTemplate{},
+			},
+			Clients:        []string{},
+			TimeoutSeconds: 120,
+		},
+	}
+
+	_, err := h.clientset.Sessions("default").Create(&session, ctx)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	clientset := value.(*k8sclient.SessionClient)
+	ctx.JSON(http.StatusOK, session)
+}
 
-	sessions, err := clientset.Sessions("default").List(metav1.ListOptions{}, ctx)
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-	}
+func GetSession(ctx *gin.Context) {
 
-	//var session SessionId
-
-	// if err := ctx.ShouldBindJSON(&session); err != nil {
-	// 	ctx.Error(err)
-	// 	ctx.AbortWithStatus(http.StatusBadRequest)
-	// 	return
-	// }
-	ctx.JSON(http.StatusOK, sessions)
 }
