@@ -1,15 +1,19 @@
 package main
 
 import (
+	"flag"
 	handlers "telepresence-k8s/session-manager/handlers"
 
 	"github.com/gin-gonic/gin"
 )
 
 func main() {
+	k8sInClusterCfg := flag.Bool("k8sInClusterCfg", true, "Use in cluster config")
+	flag.Parse()
+
 	router := gin.Default()
 
-	handler, err := handlers.ConfigHandler()
+	handler, err := handlers.ConfigHandler(*k8sInClusterCfg)
 	if err != nil {
 		panic(err.Error())
 	}

@@ -6,6 +6,7 @@ import (
 	k8sclient "telepresence-k8s/session-manager/k8sClient"
 
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
 )
@@ -14,20 +15,39 @@ type Handler struct {
 	clientset *k8sclient.SessionClient
 }
 
-func ConfigHandler() (*Handler, error) {
-	var kubeconfig *string
+/**
+Reference
+	- https://github.com/kubernetes/client-go/blob/master/examples/in-cluster-client-configuration/README.md
+	- https://github.com/kubernetes/client-go/blob/master/examples/out-of-cluster-client-configuration/README.md
+*/
 
-	if home := homedir.HomeDir(); home != "" {
-		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
+func ConfigHandler(k8sInClusterCfg bool) (*Handler, error) {
+	var config *rest.Config
+
+	if k8sInClusterCfg {
+		cfg, err := rest.InClusterConfig()
+		if err != nil {
+			return nil, err
+		}
+
+		config = cfg
 	} else {
-		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
-	}
+		var kubeconfig *string
 
-	flag.Parse()
+		if home := homedir.HomeDir(); home != "" {
+			kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
+		} else {
+			kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
+		}
 
-	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
-	if err != nil {
-		return nil, err
+		flag.Parse()
+
+		cfg, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
+		if err != nil {
+			return nil, err
+		}
+
+		config = cfg
 	}
 
 	k8sclient.AddToScheme(scheme.Scheme)
