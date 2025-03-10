@@ -24,17 +24,28 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
+type BackgroundPod struct {
+	Name           string `json:"name,omitempty"`
+	corev1.PodSpec `json:",inline"`
+}
+
 // SessionSpec defines the desired state of Session.
 type SessionSpec struct {
-	Services           corev1.PodTemplateList `json:"services,omitempty"`
-	BackgroundServices corev1.PodTemplateList `json:"backgroundServices,omitempty"`
-	Clients            []string               `json:"clients,omitempty"`
-	TimeoutSeconds     int32                  `json:"timeoutSeconds,omitempty"`
+	Services       corev1.PodTemplateList `json:"services,omitempty"`
+	BackgroundPods []BackgroundPod        `json:"backgroundPods,omitempty"`
+	Clients        []string               `json:"clients,omitempty"`
+	TimeoutSeconds int32                  `json:"timeoutSeconds,omitempty"`
+}
+
+type ClientBackgroundPodsStatus struct {
+	Client string
+	Ready  bool
 }
 
 // SessionStatus defines the observed state of Session.
 type SessionStatus struct {
-	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
+	Conditions []metav1.Condition           `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
+	Clients    []ClientBackgroundPodsStatus `json:"clients,omitempty"`
 }
 
 // +kubebuilder:object:root=true

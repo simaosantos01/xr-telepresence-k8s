@@ -1,9 +1,9 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: clientpolling
+  name: background-headless
   namespace: default
 spec:
   clusterIP: None
   selector:
-    service: clientpolling
+    pod: background
