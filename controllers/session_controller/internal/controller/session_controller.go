@@ -69,14 +69,13 @@ func (r *SessionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 }
 
 var (
-	ownerKey  = ".metadata.controller"
-	clientKey = ".metadata.annotations.client"
+	ownerKey  = "controllerReference"
+	clientKey = "clientAnnotation"
 	apiGVStr  = telepresencev1.GroupVersion.String()
 )
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *SessionReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	// TODO: Review this
 	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.Pod{}, ownerKey, func(o client.Object) []string {
 		pod := o.(*corev1.Pod)
 		owner := metav1.GetControllerOf(pod)
@@ -93,7 +92,6 @@ func (r *SessionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return err
 	}
 
-	// Not sure if this works
 	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.Pod{}, clientKey, func(o client.Object) []string {
 		pod := o.(*corev1.Pod)
 

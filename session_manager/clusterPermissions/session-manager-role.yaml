@@ -6,4 +6,4 @@ metadata:
 rules:
   - apiGroups: ["telepresence.mr.telepresence"]
     resources: ["sessions"]
-    verbs: ["get", "list", "watch", "create", "update", "delete"]
+    verbs: ["get", "list", "watch", "create", "update", "delete", "patch"]

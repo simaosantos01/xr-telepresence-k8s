@@ -31,15 +31,15 @@ type BackgroundPod struct {
 
 // SessionSpec defines the desired state of Session.
 type SessionSpec struct {
-	Services       corev1.PodTemplateList `json:"services,omitempty"`
-	BackgroundPods []BackgroundPod        `json:"backgroundPods,omitempty"`
-	Clients        []string               `json:"clients,omitempty"`
-	TimeoutSeconds int32                  `json:"timeoutSeconds,omitempty"`
+	//Services       corev1.PodTemplateList `json:"services,omitempty"`
+	BackgroundPods []BackgroundPod `json:"backgroundPods,omitempty"`
+	Clients        []string        `json:"clients,omitempty"`
+	TimeoutSeconds int32           `json:"timeoutSeconds,omitempty"`
 }
 
 type ClientBackgroundPodsStatus struct {
-	Client string
-	Ready  bool
+	Client string `json:"client"`
+	Ready  bool   `json:"ready"`
 }
 
 // SessionStatus defines the observed state of Session.

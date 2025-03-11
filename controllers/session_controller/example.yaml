@@ -4,25 +4,17 @@ metadata:
   labels:
     app.kubernetes.io/name: telepresencekubctrl
     app.kubernetes.io/managed-by: kustomize
-  name: session-1
+  name: session1
 spec:
-  services:
-    items:
-      - template:
-          spec:
-            containers:
-              - name: nginx
-                image: nginx:latest
-                ports:
-                  - containerPort: 80
-      - template:
-          spec:
-            containers:
-              - name: clientpolling
-                image: clientpolling:latest
-                imagePullPolicy: Never
-                ports:
-                  - containerPort: 8080
+  backgroundPods:
+    - name: renderfusion
+      containers:
+        - name: nginx
+          image: nginx:latest
+          ports:
+            - containerPort: 80
+  clients:
+    - client1
+    - client2
+    - client3
   timeoutSeconds: 90
-  pollingIntervalSeconds: 120
-  pollingHook:
