@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -13,50 +12,77 @@ import (
 type ConditionType string
 
 const (
-	TypeReady ConditionType = "Ready"
+	TYPE_READY ConditionType = "Ready"
 )
 
-type ConditionsAware interface {
-	GetConditions() []metav1.Condition
-	SetConditions(conditions []metav1.Condition)
-}
+const RESOURCE_NOT_FOUND_REASON = "ResourceNotFound"
+const RESOURCE_NOT_FOUND_MESSAGE = "Failed to get session resource"
 
-func (r *SessionReconciler) setCondition(ctx context.Context, session *telepresencev1.Session, conditionType ConditionType,
-	status metav1.ConditionStatus, reason string, message string) error {
+const FAILED_GET_SESSION_PODS_REASON = "FailedGetSessionPods"
+const FAILED_GET_SESSION_PODS_MESSAGE = "Failed to get the session pods"
 
-	if !containsCondition(session, reason) {
-		return appendCondition(ctx, r.Client, session, conditionType, status, reason, message)
+const SESSION_PODS_READY_REASON = "SessionPodsReady"
+const SESSION_PODS_READY_MESSAGE = "All the session pods present the ready contidion set to true"
+
+const SESSION_PODS_NOT_READY_REASON = "SessionPodsNotReady"
+const SESSION_PODS_NOT_READY_MESSAGE = "At least one session pod presents the ready contidion set to false"
+
+func (r *SessionReconciler) SetReadyCondition(
+	ctx context.Context,
+	session *telepresencev1.Session,
+	status metav1.ConditionStatus,
+	reason string,
+	message string) error {
+
+	index := containsCondition(session, TYPE_READY)
+
+	if index != -1 {
+		if err := removeConditionAtIndex(ctx, r.Client, session, index); err != nil {
+			return err
+		}
+		return appendCondition(ctx, r.Client, session, TYPE_READY, status, reason, message)
 	}
-	return nil
+	return appendCondition(ctx, r.Client, session, TYPE_READY, status, reason, message)
 }
 
-func containsCondition(session *telepresencev1.Session, reason string) bool {
+func containsCondition(session *telepresencev1.Session, conditionType ConditionType) int {
+	index := -1
 
-	output := false
-	for _, condition := range session.Status.Conditions {
-		if condition.Reason == reason {
-			output = true
+	for i, condition := range session.Status.Conditions {
+		if condition.Type == string(conditionType) {
+			index = i
 		}
 	}
-	return output
+	return index
 }
 
-func appendCondition(ctx context.Context, client client.Client, object client.Object, conditionType ConditionType,
-	status metav1.ConditionStatus, reason string, message string) error {
+func removeConditionAtIndex(
+	ctx context.Context,
+	client client.Client,
+	session *telepresencev1.Session,
+	index int) error {
 
-	conditionsAware, conversionSuccessful := (object).(ConditionsAware) // type assertion
+	session.Status.Conditions = append(session.Status.Conditions[:index], session.Status.Conditions[index+1:]...)
+	return client.Status().Update(ctx, session)
+}
 
-	if conversionSuccessful {
-		condition := metav1.Condition{
-			Type:               string(conditionType),
-			Status:             status,
-			Reason:             reason,
-			Message:            message,
-			LastTransitionTime: metav1.Time{Time: time.Now()},
-		}
-		conditionsAware.SetConditions(append(conditionsAware.GetConditions(), condition))
+func appendCondition(
+	ctx context.Context,
+	client client.Client,
+	session *telepresencev1.Session,
+	conditionType ConditionType,
+	status metav1.ConditionStatus,
+	reason string,
+	message string) error {
 
-		return client.Status().Update(ctx, object)
+	condition := metav1.Condition{
+		Type:               string(conditionType),
+		Status:             status,
+		Reason:             reason,
+		Message:            message,
+		LastTransitionTime: metav1.Time{Time: time.Now()},
 	}
-	return fmt.Errorf("status cannot be set, resource doesn't support conditions")
+
+	session.Status.Conditions = append(session.Status.Conditions, condition)
+	return client.Status().Update(ctx, session)
 }

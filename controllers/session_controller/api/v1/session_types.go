@@ -24,17 +24,17 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-type BackgroundPod struct {
-	Name           string `json:"name,omitempty"`
+type PodSpec struct {
+	Name           string `json:"name"`
 	corev1.PodSpec `json:",inline"`
 }
 
 // SessionSpec defines the desired state of Session.
 type SessionSpec struct {
-	//Services       corev1.PodTemplateList `json:"services,omitempty"`
-	BackgroundPods []BackgroundPod `json:"backgroundPods,omitempty"`
-	Clients        []string        `json:"clients,omitempty"`
-	TimeoutSeconds int32           `json:"timeoutSeconds,omitempty"`
+	SessionPods    []PodSpec `json:"sessionPods"`
+	BackgroundPods []PodSpec `json:"backgroundPods"`
+	Clients        []string  `json:"clients"`
+	TimeoutSeconds int32     `json:"timeoutSeconds"`
 }
 
 type ClientBackgroundPodsStatus struct {

@@ -56,9 +56,15 @@ func (r *SessionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	var session telepresencev1.Session
 	if err := r.Get(ctx, req.NamespacedName, &session); err != nil && errors.IsNotFound(err) {
 		return ctrl.Result{}, nil
+
 	} else if err != nil {
+		r.SetReadyCondition(ctx, &session, metav1.ConditionUnknown, RESOURCE_NOT_FOUND_REASON, RESOURCE_NOT_FOUND_MESSAGE)
 		logger.Error(err, "unable to get session resource")
 		return ctrl.Result{}, err
+	}
+
+	if err := r.ReconcileSessionPods(ctx, req.Namespace, &session); err != nil {
+		return ctrl.Result{}, nil
 	}
 
 	if err := r.ReconcileBackgroundPods(ctx, req.Namespace, &session); err != nil {
