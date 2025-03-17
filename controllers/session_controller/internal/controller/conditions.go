@@ -6,7 +6,6 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	telepresencev1 "mr.telepresence/controller/api/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type ConditionType string
@@ -32,17 +31,16 @@ func (r *SessionReconciler) SetReadyCondition(
 	session *telepresencev1.Session,
 	status metav1.ConditionStatus,
 	reason string,
-	message string) error {
+	message string) {
 
 	index := containsCondition(session, TYPE_READY)
 
 	if index != -1 {
-		if err := removeConditionAtIndex(ctx, r.Client, session, index); err != nil {
-			return err
-		}
-		return appendCondition(ctx, r.Client, session, TYPE_READY, status, reason, message)
+		removeConditionAtIndex(session, index)
+		appendCondition(session, TYPE_READY, status, reason, message)
+	} else {
+		appendCondition(session, TYPE_READY, status, reason, message)
 	}
-	return appendCondition(ctx, r.Client, session, TYPE_READY, status, reason, message)
 }
 
 func containsCondition(session *telepresencev1.Session, conditionType ConditionType) int {
@@ -56,24 +54,16 @@ func containsCondition(session *telepresencev1.Session, conditionType ConditionT
 	return index
 }
 
-func removeConditionAtIndex(
-	ctx context.Context,
-	client client.Client,
-	session *telepresencev1.Session,
-	index int) error {
-
+func removeConditionAtIndex(session *telepresencev1.Session, index int) {
 	session.Status.Conditions = append(session.Status.Conditions[:index], session.Status.Conditions[index+1:]...)
-	return client.Status().Update(ctx, session)
 }
 
 func appendCondition(
-	ctx context.Context,
-	client client.Client,
 	session *telepresencev1.Session,
 	conditionType ConditionType,
 	status metav1.ConditionStatus,
 	reason string,
-	message string) error {
+	message string) {
 
 	condition := metav1.Condition{
 		Type:               string(conditionType),
@@ -84,5 +74,4 @@ func appendCondition(
 	}
 
 	session.Status.Conditions = append(session.Status.Conditions, condition)
-	return client.Status().Update(ctx, session)
 }

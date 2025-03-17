@@ -12,6 +12,49 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+func IndexSessionPods(obj ctrlClient.Object) []string {
+	pod := obj.(*corev1.Pod)
+	owner := metav1.GetControllerOf(pod)
+
+	if owner == nil {
+		return nil
+	}
+
+	if owner.APIVersion != apiGVStr || owner.Kind != "Session" {
+		return nil
+	}
+
+	purpose, ok := pod.Labels["purpose"]
+	if !ok {
+		return nil
+
+	} else if purpose != "session" {
+		return nil
+	}
+
+	return []string{owner.Name}
+}
+
+func IndexBackgroundPods(obj ctrlClient.Object) []string {
+	pod := obj.(*corev1.Pod)
+	owner := metav1.GetControllerOf(pod)
+
+	if owner == nil {
+		return nil
+	}
+
+	if owner.APIVersion != apiGVStr || owner.Kind != "Session" {
+		return nil
+	}
+
+	client, ok := pod.Annotations["client"]
+	if !ok {
+		return nil
+	}
+
+	return []string{client}
+}
+
 func PodsAreReady(podList *corev1.PodList) bool {
 	for _, pod := range podList.Items {
 		for _, condition := range pod.Status.Conditions {
@@ -30,7 +73,6 @@ func RestorePods(
 	k8sclient ctrlClient.Client,
 	scheme *runtime.Scheme,
 	ctx context.Context,
-	namespace string,
 	session *telepresencev1.Session,
 	foundPods *corev1.PodList,
 	requiredPods []telepresencev1.PodSpec,
@@ -41,7 +83,7 @@ func RestorePods(
 		// all pods are missing
 		for _, podSpec := range requiredPods {
 			pod := buildPod(podObjectMeta, &podSpec, session, client)
-			if err := spawnPod(k8sclient, scheme, ctx, namespace, session, pod); err != nil {
+			if err := spawnPod(k8sclient, scheme, ctx, session, pod); err != nil {
 				return err
 			}
 		}
@@ -60,7 +102,7 @@ func RestorePods(
 			if !found {
 				// the pod wasn't found, lets spawn it
 				pod := buildPod(podObjectMeta, &podSpec, session, client)
-				if err := spawnPod(k8sclient, scheme, ctx, namespace, session, pod); err != nil {
+				if err := spawnPod(k8sclient, scheme, ctx, session, pod); err != nil {
 					return err
 				}
 			}
@@ -92,7 +134,6 @@ func spawnPod(
 	k8sclient ctrlClient.Client,
 	scheme *runtime.Scheme,
 	ctx context.Context,
-	namespace string,
 	session *telepresencev1.Session,
 	pod *corev1.Pod) error {
 

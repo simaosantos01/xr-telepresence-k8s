@@ -5,7 +5,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	telepresencev1 "mr.telepresence/controller/api/v1"
 	ctrlClient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -22,7 +21,7 @@ func (r *SessionReconciler) ReconcileSessionPods(
 	if err := r.List(ctx, &sessionPods, ctrlClient.InNamespace(namespace),
 		ctrlClient.MatchingFields{ownerKey: session.Name}); err != nil {
 
-		r.SetReadyCondition(ctx, session, v1.ConditionUnknown, FAILED_GET_SESSION_PODS_REASON,
+		r.SetReadyCondition(ctx, session, metav1.ConditionUnknown, FAILED_GET_SESSION_PODS_REASON,
 			FAILED_GET_SESSION_PODS_MESSAGE)
 
 		logger.Error(err, "unable to get session pods", "session", session.Name)
@@ -34,27 +33,15 @@ func (r *SessionReconciler) ReconcileSessionPods(
 		ready := PodsAreReady(&sessionPods)
 
 		if ready {
-			if err := r.SetReadyCondition(ctx, session, v1.ConditionTrue, SESSION_PODS_READY_REASON,
-				SESSION_PODS_READY_MESSAGE); err != nil {
-
-				logger.Error(err, "unable to update ready condition", "session", session.Name)
-				return err
-			}
+			r.SetReadyCondition(ctx, session, metav1.ConditionTrue, SESSION_PODS_READY_REASON,
+				SESSION_PODS_READY_MESSAGE)
 		} else {
-			if err := r.SetReadyCondition(ctx, session, v1.ConditionFalse, SESSION_PODS_NOT_READY_REASON,
-				SESSION_PODS_NOT_READY_MESSAGE); err != nil {
-
-				logger.Error(err, "unable to update ready condition", "session", session.Name)
-				return err
-			}
+			r.SetReadyCondition(ctx, session, metav1.ConditionFalse, SESSION_PODS_NOT_READY_REASON,
+				SESSION_PODS_NOT_READY_MESSAGE)
 		}
 	} else {
-		if err := r.SetReadyCondition(ctx, session, v1.ConditionFalse, SESSION_PODS_NOT_READY_REASON,
-			SESSION_PODS_NOT_READY_MESSAGE); err != nil {
-
-			logger.Error(err, "unable to update ready condition", "session", session.Name)
-			return err
-		}
+		r.SetReadyCondition(ctx, session, metav1.ConditionFalse, SESSION_PODS_NOT_READY_REASON,
+			SESSION_PODS_NOT_READY_MESSAGE)
 
 		objectMeta := metav1.ObjectMeta{
 			Namespace: namespace,
@@ -62,8 +49,8 @@ func (r *SessionReconciler) ReconcileSessionPods(
 			Labels: map[string]string{"purpose": "session"},
 		}
 
-		if err := RestorePods(r.Client, r.Scheme, ctx, namespace, session, &sessionPods, session.Spec.SessionPods,
-			&objectMeta, nil); err != nil {
+		if err := RestorePods(r.Client, r.Scheme, ctx, session, &sessionPods, session.Spec.SessionPods, &objectMeta,
+			nil); err != nil {
 
 			return err
 		}

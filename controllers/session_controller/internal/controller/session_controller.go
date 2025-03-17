@@ -59,15 +59,23 @@ func (r *SessionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	} else if err != nil {
 		r.SetReadyCondition(ctx, &session, metav1.ConditionUnknown, RESOURCE_NOT_FOUND_REASON, RESOURCE_NOT_FOUND_MESSAGE)
+		r.Status().Update(ctx, &session)
 		logger.Error(err, "unable to get session resource")
 		return ctrl.Result{}, err
 	}
 
 	if err := r.ReconcileSessionPods(ctx, req.Namespace, &session); err != nil {
-		return ctrl.Result{}, nil
+		r.Status().Update(ctx, &session)
+		return ctrl.Result{}, err
 	}
 
 	if err := r.ReconcileBackgroundPods(ctx, req.Namespace, &session); err != nil {
+		r.Status().Update(ctx, &session)
+		return ctrl.Result{}, err
+	}
+
+	if err := r.Status().Update(ctx, &session); err != nil {
+		logger.Error(err, "undable to update sessio status", "session", session.Name)
 		return ctrl.Result{}, err
 	}
 
@@ -82,33 +90,19 @@ var (
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *SessionReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.Pod{}, ownerKey, func(o client.Object) []string {
-		pod := o.(*corev1.Pod)
-		owner := metav1.GetControllerOf(pod)
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.Pod{}, ownerKey,
+		func(o client.Object) []string {
 
-		if owner == nil {
-			return nil
-		}
-
-		if owner.APIVersion != apiGVStr || owner.Kind != "Session" {
-			return nil
-		}
-		return []string{owner.Name}
-	}); err != nil {
+			return IndexSessionPods(o)
+		}); err != nil {
 		return err
 	}
 
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.Pod{}, clientKey, func(o client.Object) []string {
-		pod := o.(*corev1.Pod)
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.Pod{}, clientKey,
+		func(o client.Object) []string {
 
-		client, ok := pod.Annotations["client"]
-
-		if !ok {
-			return nil
-		}
-
-		return []string{client}
-	}); err != nil {
+			return IndexBackgroundPods(o)
+		}); err != nil {
 		return err
 	}
 

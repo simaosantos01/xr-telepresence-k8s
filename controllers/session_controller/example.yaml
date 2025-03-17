@@ -6,6 +6,13 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: session1
 spec:
+  sessionPods:
+    - name: renderfusion
+      containers:
+        - name: nginx
+          image: nginx:latest
+          ports:
+            - containerPort: 80
   backgroundPods:
     - name: renderfusion
       containers:
@@ -15,6 +22,4 @@ spec:
             - containerPort: 80
   clients:
     - client1
-    - client2
-    - client3
   timeoutSeconds: 90

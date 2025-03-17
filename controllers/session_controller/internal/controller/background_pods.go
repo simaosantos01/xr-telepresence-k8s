@@ -53,7 +53,7 @@ func (r *SessionReconciler) ReconcileBackgroundPods(
 				Annotations: map[string]string{"client": client},
 			}
 
-			if err := RestorePods(r.Client, r.Scheme, ctx, namespace, session, &backgroundPods, session.Spec.BackgroundPods,
+			if err := RestorePods(r.Client, r.Scheme, ctx, session, &backgroundPods, session.Spec.BackgroundPods,
 				&objectMeta, &client); err != nil {
 
 				return err
