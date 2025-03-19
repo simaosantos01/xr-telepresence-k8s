@@ -10,7 +10,7 @@ from aiohttp import web
 from aiortc import MediaStreamTrack, RTCPeerConnection, RTCSessionDescription, RTCDataChannel
 from av import VideoFrame
 
-from remote_object_detection.obj_detection import detect_objects
+from obj_detection import detect_objects
 
 ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
 ssl_context.load_cert_chain(certfile="cert.pem", keyfile="key.pem")

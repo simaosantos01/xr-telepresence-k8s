@@ -1,6 +1,0 @@
-.venv
-remote_object_detection/imgs
-remote_object_detection/yolov8n.pt
-remote_object_detection/cert.pem
-remote_object_detection/key.pem
-remote_object_detection/__pycache__/

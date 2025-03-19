@@ -1,0 +1,5 @@
+.venv
+yolov8n.pt
+cert.pem
+key.pem
+__pycache__

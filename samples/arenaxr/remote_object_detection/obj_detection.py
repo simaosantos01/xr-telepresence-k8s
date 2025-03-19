@@ -35,8 +35,6 @@ def detect_objects(frame_queue: Queue, results_queue: Queue):
         time.sleep(0.1)
         if not frame_queue.empty():
             frame = frame_queue.get()
-            h, w, _ = frame.shape
-            print(h, w)
 
             if not process_frame(last_frame, frame):
                 continue
@@ -50,9 +48,6 @@ def detect_objects(frame_queue: Queue, results_queue: Queue):
             for result in results:
                 for box in result.boxes:
                     x1, y1, x2, y2 = map(int, box.xyxy[0])
-
-                    #x1_norm, y1_norm = x1 / w, y1 / h
-                    #x2_norm, y2_norm = x2 / w, y2 / h
 
                     label = model.names[int(box.cls[0])]
                     detection_result.append((label, x1, y1, x2, y2))
