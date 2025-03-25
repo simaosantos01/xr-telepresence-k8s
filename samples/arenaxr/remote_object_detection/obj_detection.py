@@ -53,3 +53,11 @@ def detect_objects(frame_queue: Queue, results_queue: Queue):
                     detection_result.append((label, x1, y1, x2, y2))
 
             results_queue.put(detection_result)
+
+
+def dummy_detect_objects(frame_queue: Queue, results_queue: Queue):
+    while True:
+        time.sleep(0.1)
+        if not frame_queue.empty():
+            frame_queue.get()
+            results_queue.put([("dummy", 200, 200, 200, 200)])
