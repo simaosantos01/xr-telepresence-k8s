@@ -69,84 +69,23 @@ func PodsAreReady(podList *corev1.PodList) bool {
 	return true
 }
 
-func RestorePods(
+func SpawnResource(
 	k8sclient ctrlClient.Client,
 	scheme *runtime.Scheme,
 	ctx context.Context,
 	session *telepresencev1.Session,
-	foundPods *corev1.PodList,
-	requiredPods []telepresencev1.PodSpec,
-	podObjectMeta *metav1.ObjectMeta,
-	client *string) error {
-
-	if len(foundPods.Items) == 0 {
-		// all pods are missing
-		for _, podSpec := range requiredPods {
-			pod := buildPod(podObjectMeta, &podSpec, session, client)
-			if err := spawnPod(k8sclient, scheme, ctx, session, pod); err != nil {
-				return err
-			}
-		}
-	} else {
-		// lets find out which pods are missing
-		for _, podSpec := range requiredPods {
-			found := false
-
-			for _, foundPod := range foundPods.Items {
-				if podSpec.Name == foundPod.Name {
-					found = true
-					break
-				}
-			}
-
-			if !found {
-				// the pod wasn't found, lets spawn it
-				pod := buildPod(podObjectMeta, &podSpec, session, client)
-				if err := spawnPod(k8sclient, scheme, ctx, session, pod); err != nil {
-					return err
-				}
-			}
-		}
-	}
-
-	return nil
-}
-
-func buildPod(
-	objectMeta *metav1.ObjectMeta,
-	podSpec *telepresencev1.PodSpec,
-	session *telepresencev1.Session,
-	client *string) *corev1.Pod {
-
-	objectMeta.Name = session.Name + "-" + podSpec.Name
-
-	if client != nil {
-		objectMeta.Name += "-" + *client
-	}
-
-	return &corev1.Pod{
-		ObjectMeta: *objectMeta,
-		Spec:       podSpec.PodSpec,
-	}
-}
-
-func spawnPod(
-	k8sclient ctrlClient.Client,
-	scheme *runtime.Scheme,
-	ctx context.Context,
-	session *telepresencev1.Session,
-	pod *corev1.Pod) error {
+	resource ctrlClient.Object) error {
 
 	logger := log.FromContext(ctx)
 
 	// set controller reference for garbage collection
-	if err := ctrl.SetControllerReference(session, pod, scheme); err != nil {
-		logger.Error(err, "unable to set controller reference for pod", "session", session.Name, "pod", pod)
+	if err := ctrl.SetControllerReference(session, resource, scheme); err != nil {
+		logger.Error(err, "unable to set controller reference for pod", "session", session.Name, "pod", resource.GetName())
 		return err
 	}
 
-	if err := k8sclient.Create(ctx, pod); err != nil {
-		logger.Error(err, "unable to create pod", "session", session.Name, "pod", pod)
+	if err := k8sclient.Create(ctx, resource); err != nil {
+		logger.Error(err, "unable to create pod", "session", session.Name, "pod", resource.GetName())
 		return err
 	}
 

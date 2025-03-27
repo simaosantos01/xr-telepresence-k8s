@@ -24,28 +24,42 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-type PodSpec struct {
-	Name           string `json:"name"`
-	corev1.PodSpec `json:",inline"`
+type ClientService struct {
+	Pod        `json:",inline"`
+	MaxClients int `json:"maxClients"`
+}
+
+type Pod struct {
+	Name   string            `json:"name"`
+	Labels map[string]string `json:"labels"`
+	Spec   corev1.PodSpec    `json:"spec"`
 }
 
 // SessionSpec defines the desired state of Session.
 type SessionSpec struct {
-	SessionPods    []PodSpec `json:"sessionPods"`
-	BackgroundPods []PodSpec `json:"backgroundPods"`
-	Clients        []string  `json:"clients"`
-	TimeoutSeconds int32     `json:"timeoutSeconds"`
+	SessionServices         []Pod           `json:"sessionServices"`
+	ClientServices          []ClientService `json:"clientServices"`
+	TimeoutSeconds          int             `json:"timeoutSeconds"`
+	ReutilizeTimeoutSeconds int             `json:"reutilizeTimeoutSeconds"`
+	Clients                 []string        `json:"clients"`
 }
 
-type ClientBackgroundPodsStatus struct {
-	Client string `json:"client"`
-	Ready  bool   `json:"ready"`
+type ClientEndpointStatus struct {
+	Service string `json:"service"`
+	Ip      string `json:"ip"`
+	Ready   bool   `json:"ready"`
+}
+
+type ClientStatus struct {
+	Client    string                 `json:"client"`
+	Ready     bool                   `json:"ready"`
+	Endpoints []ClientEndpointStatus `json:"endpoints"`
 }
 
 // SessionStatus defines the observed state of Session.
 type SessionStatus struct {
-	Conditions []metav1.Condition           `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
-	Clients    []ClientBackgroundPodsStatus `json:"clients,omitempty"`
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
+	Clients    []ClientStatus     `json:"clients,omitempty"`
 }
 
 // +kubebuilder:object:root=true

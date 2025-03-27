@@ -21,7 +21,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -58,26 +57,30 @@ func (r *SessionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, nil
 
 	} else if err != nil {
-		r.SetReadyCondition(ctx, &session, metav1.ConditionUnknown, RESOURCE_NOT_FOUND_REASON, RESOURCE_NOT_FOUND_MESSAGE)
-		r.Status().Update(ctx, &session)
 		logger.Error(err, "unable to get session resource")
 		return ctrl.Result{}, err
 	}
 
-	if err := r.ReconcileSessionPods(ctx, req.Namespace, &session); err != nil {
-		r.Status().Update(ctx, &session)
-		return ctrl.Result{}, err
-	}
+	//sessionSnapshot := session.DeepCopy()
 
-	if err := r.ReconcileBackgroundPods(ctx, req.Namespace, &session); err != nil {
-		r.Status().Update(ctx, &session)
-		return ctrl.Result{}, err
-	}
+	// if err := r.ReconcileSessionServices(ctx, req.Namespace, &session); err != nil {
+	// 	r.Status().Update(ctx, &session)
+	// 	return ctrl.Result{}, err
+	// }
 
-	if err := r.Status().Update(ctx, &session); err != nil {
-		logger.Error(err, "undable to update sessio status", "session", session.Name)
-		return ctrl.Result{}, err
-	}
+	// if err := r.ReconcileBackgroundPods(ctx, req.Namespace, &session); err != nil {
+	// 	r.Status().Update(ctx, &session)
+	// 	return ctrl.Result{}, err
+	// }
+
+	// if err := r.Status().Update(ctx, &session); err != nil {
+	// 	logger.Error(err, "undable to update sessio status", "session", session.Name)
+	// 	return ctrl.Result{}, err
+	// }
+
+	// if sessionSnapshot.Status != session.Status {
+
+	// }
 
 	return ctrl.Result{}, nil
 }
@@ -109,6 +112,7 @@ func (r *SessionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&telepresencev1.Session{}).
 		Owns(&corev1.Pod{}).
+		Owns(&corev1.Service{}).
 		Named("session").
 		Complete(r)
 }
