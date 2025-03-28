@@ -12,30 +12,21 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-func IndexSessionPods(obj ctrlClient.Object) []string {
-	pod := obj.(*corev1.Pod)
-	owner := metav1.GetControllerOf(pod)
+func IndexByOwner(obj ctrlClient.Object) []string {
+	owner := metav1.GetControllerOf(obj)
 
 	if owner == nil {
 		return nil
 	}
 
 	if owner.APIVersion != apiGVStr || owner.Kind != "Session" {
-		return nil
-	}
-
-	purpose, ok := pod.Labels["purpose"]
-	if !ok {
-		return nil
-
-	} else if purpose != "session" {
 		return nil
 	}
 
 	return []string{owner.Name}
 }
 
-func IndexBackgroundPods(obj ctrlClient.Object) []string {
+func IndexPodByType(obj ctrlClient.Object) []string {
 	pod := obj.(*corev1.Pod)
 	owner := metav1.GetControllerOf(pod)
 
@@ -47,12 +38,12 @@ func IndexBackgroundPods(obj ctrlClient.Object) []string {
 		return nil
 	}
 
-	client, ok := pod.Annotations["client"]
+	podType, ok := pod.Labels["type"]
 	if !ok {
 		return nil
 	}
 
-	return []string{client}
+	return []string{podType}
 }
 
 func PodsAreReady(podList *corev1.PodList) bool {

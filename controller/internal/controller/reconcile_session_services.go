@@ -19,13 +19,20 @@ func (r *SessionReconciler) ReconcileSessionPods(
 	logger := log.FromContext(ctx)
 
 	var sessionPods corev1.PodList
-	if err := r.List(ctx, &sessionPods, ctrlClient.InNamespace(namespace),
-		ctrlClient.MatchingFields{ownerKey: session.Name}); err != nil {
+	fieldSelector := ctrlClient.MatchingFields{ownerField: session.Name, podTypeField: "session"}
 
-		r.SetReadyCondition(ctx, session, metav1.ConditionUnknown, FAILED_GET_SESSION_PODS_REASON,
-			FAILED_GET_SESSION_PODS_MESSAGE)
-
+	if err := r.List(ctx, &sessionPods, ctrlClient.InNamespace(namespace), fieldSelector); err != nil {
+		r.SetReadyCondition(session, metav1.ConditionUnknown, GET_PODS_FAILED_REASON, GET_PODS_FAILED_MESSAGE)
 		logger.Error(err, "unable to get session pods", "session", session.Name)
+		return err
+	}
+
+	var services corev1.ServiceList
+	fieldSelector = ctrlClient.MatchingFields{ownerField: session.Name}
+
+	if err := r.List(ctx, &services, ctrlClient.InNamespace(namespace), fieldSelector); err != nil {
+		r.SetReadyCondition(session, metav1.ConditionUnknown, GET_SVC_FAILED_REASON, GET_SVC_FAILED_MESSAGE)
+		logger.Error(err, "unable to get session services", "session", session.Name)
 		return err
 	}
 
@@ -33,16 +40,18 @@ func (r *SessionReconciler) ReconcileSessionPods(
 		ready := PodsAreReady(&sessionPods)
 
 		if ready {
-			r.SetReadyCondition(ctx, session, metav1.ConditionTrue, SESSION_PODS_READY_REASON,
-				SESSION_PODS_READY_MESSAGE)
+			r.SetReadyCondition(session, metav1.ConditionTrue, PODS_READY_REASON, PODS_READY_MESSAGE)
 		} else {
-			r.SetReadyCondition(ctx, session, metav1.ConditionFalse, SESSION_PODS_NOT_READY_REASON,
-				SESSION_PODS_NOT_READY_MESSAGE)
+			r.SetReadyCondition(session, metav1.ConditionFalse, PODS_NOT_READY_REASON, PODS_NOT_READY_MESSAGE)
 		}
 	} else {
-		r.SetReadyCondition(ctx, session, metav1.ConditionFalse, SESSION_PODS_NOT_READY_REASON,
-			SESSION_PODS_NOT_READY_MESSAGE)
+		if err := restorePods(r.Client, r.Scheme, ctx, session, sessionPods.Items, services.Items,
+			session.Spec.SessionServices); err != nil {
 
+			r.SetReadyCondition(session, metav1.ConditionFalse, PODS_NOT_READY_REASON, PODS_NOT_READY_MESSAGE)
+			return err
+		}
+		r.SetReadyCondition(session, metav1.ConditionUnknown, PODS_RECONCILED_REASON, PODS_RECONCILED_MESSAGE)
 	}
 
 	return nil

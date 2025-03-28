@@ -21,6 +21,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -57,16 +58,18 @@ func (r *SessionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, nil
 
 	} else if err != nil {
+		r.SetReadyCondition(&session, metav1.ConditionUnknown, RESOURCE_NOT_FOUND_REASON, RESOURCE_NOT_FOUND_MESSAGE)
+		r.Status().Update(ctx, &session)
 		logger.Error(err, "unable to get session resource")
 		return ctrl.Result{}, err
 	}
 
 	//sessionSnapshot := session.DeepCopy()
 
-	// if err := r.ReconcileSessionServices(ctx, req.Namespace, &session); err != nil {
-	// 	r.Status().Update(ctx, &session)
-	// 	return ctrl.Result{}, err
-	// }
+	if err := r.ReconcileSessionPods(ctx, req.Namespace, &session); err != nil {
+		r.Status().Update(ctx, &session)
+		return ctrl.Result{}, err
+	}
 
 	// if err := r.ReconcileBackgroundPods(ctx, req.Namespace, &session); err != nil {
 	// 	r.Status().Update(ctx, &session)
@@ -86,25 +89,33 @@ func (r *SessionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 }
 
 var (
-	ownerKey  = "controllerReference"
-	clientKey = "clientAnnotation"
-	apiGVStr  = telepresencev1.GroupVersion.String()
+	ownerField   = "ownerField"
+	podTypeField = "podTypeField"
+	apiGVStr     = telepresencev1.GroupVersion.String()
 )
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *SessionReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.Pod{}, ownerKey,
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.Pod{}, ownerField,
 		func(o client.Object) []string {
 
-			return IndexSessionPods(o)
+			return IndexByOwner(o)
 		}); err != nil {
 		return err
 	}
 
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.Pod{}, clientKey,
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.Pod{}, podTypeField,
 		func(o client.Object) []string {
 
-			return IndexBackgroundPods(o)
+			return IndexPodByType(o)
+		}); err != nil {
+		return err
+	}
+
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.Service{}, ownerField,
+		func(o client.Object) []string {
+
+			return IndexByOwner(o)
 		}); err != nil {
 		return err
 	}

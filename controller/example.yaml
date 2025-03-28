@@ -7,12 +7,15 @@ metadata:
   name: session1
 spec:
   sessionServices:
-    - name: asd
+    - name: test
+      labels: {}
       spec:
         containers:
           - name: nginx
             image: nginx:latest
             ports:
               - containerPort: 80
+  clientServices: []
+  clients: []
   timeoutSeconds: 120
   reutilizeTimeoutSeconds: 120

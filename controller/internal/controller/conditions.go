@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"context"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -17,17 +16,22 @@ const (
 const RESOURCE_NOT_FOUND_REASON = "ResourceNotFound"
 const RESOURCE_NOT_FOUND_MESSAGE = "Failed to get session resource"
 
-const FAILED_GET_SESSION_PODS_REASON = "FailedGetSessionPods"
-const FAILED_GET_SESSION_PODS_MESSAGE = "Failed to get the session pods"
+const GET_PODS_FAILED_REASON = "FailedGetSessionPods"
+const GET_PODS_FAILED_MESSAGE = "Failed to get the session pods"
 
-const SESSION_PODS_READY_REASON = "SessionPodsReady"
-const SESSION_PODS_READY_MESSAGE = "All the session pods present the ready contidion set to true"
+const GET_SVC_FAILED_REASON = "FailedGetSessionServices"
+const GET_SVC_FAILED_MESSAGE = "Failed to get the session services"
 
-const SESSION_PODS_NOT_READY_REASON = "SessionPodsNotReady"
-const SESSION_PODS_NOT_READY_MESSAGE = "At least one session pod presents the ready contidion set to false"
+const PODS_READY_REASON = "SessionPodsReady"
+const PODS_READY_MESSAGE = "All the session pods present the ready contidion set to true"
+
+const PODS_NOT_READY_REASON = "SessionPodsNotReady"
+const PODS_NOT_READY_MESSAGE = "At least one session pod presents the ready contidion set to false"
+
+const PODS_RECONCILED_REASON = "PodsHaveBeenReconciled"
+const PODS_RECONCILED_MESSAGE = "Pods have been reconciled successfully"
 
 func (r *SessionReconciler) SetReadyCondition(
-	ctx context.Context,
 	session *telepresencev1.Session,
 	status metav1.ConditionStatus,
 	reason string,
