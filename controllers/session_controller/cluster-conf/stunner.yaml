@@ -1,0 +1,79 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: stunner-gatewayclass
+spec:
+  controllerName: "stunner.l7mp.io/gateway-operator"
+  parametersRef:
+    group: "stunner.l7mp.io"
+    kind: GatewayConfig
+    name: stunner-gatewayconfig
+    namespace: stunner
+  description: "STUNner is a WebRTC media gateway for Kubernetes"
+
+---
+apiVersion: stunner.l7mp.io/v1
+kind: GatewayConfig
+metadata:
+  name: stunner-gatewayconfig
+  namespace: stunner
+spec:
+  realm: stunner.l7mp.io
+  logLevel: "all:DEBUG"
+  authRef:
+    name: stunner-auth-secret
+    namespace: stunner
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: stunner-auth-secret
+  namespace: stunner
+type: Opaque
+stringData:
+  type: static
+  username: user-1 # Do not use in production
+  password: pass-1 # Do not use in production
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: udp-gateway
+  namespace: stunner
+spec:
+  gatewayClassName: stunner-gatewayclass
+  listeners:
+    - name: udp-listener
+      port: 3478
+      protocol: TURN-UDP
+
+---
+apiVersion: stunner.l7mp.io/v1
+kind: UDPRoute
+metadata:
+  name: webrtc
+  namespace: stunner
+spec:
+  parentRefs:
+    - name: udp-gateway
+  rules:
+    - backendRefs:
+        - name: webrtc
+          namespace: default
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: webrtc
+  namespace: default
+spec:
+  selector:
+    app: webrtc
+  clusterIP: None
+  # The following port is ignored by STUNner
+  ports:
+    - port: 9999
+      protocol: TCP
