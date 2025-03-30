@@ -4,7 +4,6 @@ import (
 	"context"
 
 	corev1 "k8s.io/api/core/v1"
-	netv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -41,78 +40,39 @@ func (r *NetworkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 
-	var ingress netv1.Ingress
-	namespacedName := types.NamespacedName{Name: "ingress", Namespace: "default"}
-	ingressScaffolded := false
-	ingressUpdated := false
-	if err := r.Client.Get(ctx, namespacedName, &ingress); err != nil && !errors.IsNotFound(err) {
-		logger.Error(err, "unable to get ingress resource")
-		return ctrl.Result{}, err
-
-	} else if err != nil {
-		ingressScaffolded = true
-		ingress = *scaffoldIngress()
-	}
-
-	podsMap := make(map[string]struct{}, len(pods.Items))
-	servicesMap := make(map[string]struct{}, len(services.Items))
-
-	for _, pod := range pods.Items {
-		podsMap[pod.Name] = struct{}{}
-	}
-
+	servicesMap := make(map[string]*corev1.Service, len(services.Items))
 	for _, service := range services.Items {
-		key := service.Name[:len(service.Name)-3] // trim the "-svc" from the service name to match the pod name
-
-		if _, ok := podsMap[key]; !ok { // service exists but does not match any pod, lets delete it
-
-			if err := r.Delete(ctx, &service); err != nil && !errors.IsNotFound(err) {
-				logger.Error(err, "unable to delete service", "service", service)
-				return ctrl.Result{}, err
-			}
-
-			if !ingressUpdated {
-				ingressUpdated = deleteFromIngress(&ingress, &service)
-			}
-
-		} else {
-			servicesMap[service.Name] = struct{}{}
-		}
+		servicesMap[service.Name] = &service
 	}
 
-	for _, pod := range pods.Items {
+	if err := r.spawnServices(ctx, req.Namespace, pods.Items, servicesMap); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return r.reconcileIngress(ctx, servicesMap)
+}
+
+func (r *NetworkReconciler) spawnServices(
+	ctx context.Context,
+	namespace string,
+	pods []corev1.Pod,
+	servicesMap map[string]*corev1.Service,
+) error {
+
+	for _, pod := range pods {
 		key := pod.Name + "-svc"
 
 		if _, ok := servicesMap[key]; !ok { // the pod does not have a corresponding service
-			service, err := r.spawnService(ctx, req.Namespace, &pod)
+			service, err := r.spawnService(ctx, namespace, &pod)
 
 			if err != nil && !errors.IsAlreadyExists(err) {
-				return ctrl.Result{}, err
+				return err
 			}
 
-			if !ingressUpdated {
-				ingressUpdated = publishToIngress(&ingress, &pod, service)
-			}
+			servicesMap[key] = service
 		}
 	}
-
-	if ingressScaffolded {
-		if err := r.Create(ctx, &ingress); err != nil {
-			logger.Error(err, "unable to create ingress")
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{}, nil
-	}
-
-	if ingressUpdated {
-		if err := r.Update(ctx, &ingress); err != nil {
-			logger.Error(err, "unable to update ingress")
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{}, nil
-	}
-
-	return ctrl.Result{}, nil
+	return nil
 }
 
 func (r *NetworkReconciler) spawnService(
@@ -132,8 +92,10 @@ func (r *NetworkReconciler) spawnService(
 		}
 	}
 
+	// allocate default port (services require at least one port)
 	if len(servicePorts) == 0 {
-		servicePorts = append(servicePorts, corev1.ServicePort{Protocol: corev1.ProtocolSCTP, Port: 8080})
+		servicePorts = append(servicePorts, corev1.ServicePort{
+			Protocol: corev1.ProtocolTCP, Port: 8080, Name: "default"})
 	}
 
 	service := &corev1.Service{
@@ -146,6 +108,11 @@ func (r *NetworkReconciler) spawnService(
 			Ports:    servicePorts,
 			Selector: map[string]string{"svc": forPod.Name},
 		},
+	}
+
+	if err := ctrl.SetControllerReference(forPod, service, r.Scheme); err != nil {
+		logger.Error(err, "unable to set owner reference in service")
+		return nil, err
 	}
 
 	if err := r.Create(ctx, service); err != nil {
@@ -191,7 +158,7 @@ func (r *NetworkReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			}),
 			builder.WithPredicates(predicate.Funcs{
 				CreateFunc:  func(e event.CreateEvent) bool { return true },
-				DeleteFunc:  func(e event.DeleteEvent) bool { return true },
+				DeleteFunc:  func(e event.DeleteEvent) bool { return false },
 				UpdateFunc:  func(e event.UpdateEvent) bool { return false },
 				GenericFunc: func(e event.GenericEvent) bool { return false },
 			}),
