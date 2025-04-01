@@ -1,4 +1,4 @@
-package controller
+package utils
 
 import (
 	"time"
@@ -31,7 +31,7 @@ const PODS_NOT_READY_MESSAGE = "At least one session pod presents the ready cont
 const PODS_RECONCILED_REASON = "PodsHaveBeenReconciled"
 const PODS_RECONCILED_MESSAGE = "Pods have been reconciled successfully"
 
-func (r *SessionReconciler) SetReadyCondition(
+func SetReadyCondition(
 	session *telepresencev1.Session,
 	status metav1.ConditionStatus,
 	reason string,

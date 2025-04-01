@@ -3634,7 +3634,15 @@ spec:
                 type: array
               clients:
                 items:
-                  type: string
+                  properties:
+                    connected:
+                      type: boolean
+                    id:
+                      type: string
+                  required:
+                  - connected
+                  - id
+                  type: object
                 type: array
               reutilizeTimeoutSeconds:
                 type: integer

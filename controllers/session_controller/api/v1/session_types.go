@@ -35,18 +35,23 @@ type Pod struct {
 	Spec   corev1.PodSpec    `json:"spec"`
 }
 
+type Client struct {
+	Id        string `json:"id"`
+	Connected bool   `json:"connected"`
+}
+
 // SessionSpec defines the desired state of Session.
 type SessionSpec struct {
 	SessionServices         []Pod           `json:"sessionServices"`
 	ClientServices          []ClientService `json:"clientServices"`
 	TimeoutSeconds          int             `json:"timeoutSeconds"`
 	ReutilizeTimeoutSeconds int             `json:"reutilizeTimeoutSeconds"`
-	Clients                 []string        `json:"clients"`
+	Clients                 []Client        `json:"clients"`
 }
 
 type ClientEndpointStatus struct {
 	Service string `json:"service"`
-	Ip      string `json:"ip"`
+	Path    string `json:"path"`
 	Ready   bool   `json:"ready"`
 }
 
