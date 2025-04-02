@@ -2,48 +2,84 @@ package garbagecollector
 
 import (
 	"context"
+	"time"
+
+	corev1 "k8s.io/api/core/v1"
 
 	event "k8s.io/api/events/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	telepresencev1 "mr.telepresence/controller/api/v1"
-	ctrlClient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func FreeWorkload(ctx context.Context, k8sclient ctrlClient.Client, session *telepresencev1.Session) error {
-	var noClientsEvent *event.Event
-	namespacedName := types.NamespacedName{Name: "no-clients", Namespace: "default"}
+func FreeWorkload(
+	ctx context.Context,
+	rClient client.Client,
+	recorder record.EventRecorder,
+	session *telepresencev1.Session,
+	sessionPods *corev1.PodList,
+) (time.Duration, error) {
 
-	if err := k8sclient.Get(ctx, namespacedName, noClientsEvent); err != nil && !errors.IsNotFound(err) {
-		return err
+	duration := time.Duration(0)
 
-	} else if err != nil {
-		noClientsEvent = nil
+	var events event.EventList
+	fieldSelector := client.MatchingFields{"eventRegardingField": session.Name}
+	if err := rClient.List(ctx, &events, fieldSelector); err != nil {
+		return duration, err
 	}
+
+	sessionScopedEvent, _ := extractEvents(events.Items)
 
 	numOfClients := len(session.Spec.Clients)
 
-	if numOfClients != 0 && noClientsEvent != nil {
-		deleteEvent("no-clients")
+	if numOfClients != 0 && sessionScopedEvent.Name != "" {
+		// the session scoped event exists but there are clients in the session
 
-	} else if numOfClients == 0 && noClientsEvent == nil {
-		createEvent("no-clients", session)
+		if err := rClient.Delete(ctx, &sessionScopedEvent); err != nil {
+			return duration, err
+		}
 
-	} else if numOfClients == 0 && expired(noClientsEvent, session.Spec.TimeoutSeconds) {
-		// clean up everyhing and return
+	} else if numOfClients == 0 && sessionScopedEvent.Name == "" {
+		// no clients in the session and the session scoped event does not exist
+
+		recorder.Event(session, "Normal", "NoClientsInSession", "Test")
+
+		duration := time.Duration(session.Spec.TimeoutSeconds)
+		return duration, nil
+
+	} else if numOfClients == 0 && expired(&sessionScopedEvent, session.Spec.TimeoutSeconds) {
+		// no clients in the session and the timeout is reached
+
+		for _, pod := range sessionPods.Items {
+			if err := rClient.Delete(ctx, &pod); err != nil {
+				return duration, err
+			}
+		}
+
+		if err := rClient.Delete(ctx, &sessionScopedEvent); err != nil {
+			return duration, err
+		}
 	}
 
-	return nil
+	return duration, nil
 }
 
-func createEvent(name string, session *telepresencev1.Session) error {
-	return nil
+func extractEvents(events []event.Event) (event.Event, []event.Event) {
+	sessionScopedEvent := event.Event{}
+	podScopedEvents := []event.Event{}
+
+	for _, event := range events {
+		if event.Reason == "NoClientsInSession" {
+			sessionScopedEvent = event
+		} else {
+			podScopedEvents = append(podScopedEvents, event)
+		}
+	}
+
+	return sessionScopedEvent, podScopedEvents
 }
 
-func deleteEvent(name string) error {
-	return nil
-}
-
-func expired(event *event.Event, timeSeconds int) bool {
-	return true
+func expired(event *event.Event, timeoutSeconds int) bool {
+	expiryTime := event.EventTime.Time.Add(time.Duration(timeoutSeconds) * time.Second)
+	return time.Now().After(expiryTime)
 }

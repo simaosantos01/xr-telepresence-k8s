@@ -5,6 +5,19 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - deletecollection
+- apiGroups:
   - telepresence.mr.telepresence
   resources:
   - sessions

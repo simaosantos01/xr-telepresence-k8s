@@ -50,13 +50,14 @@ type SessionSpec struct {
 }
 
 type ClientEndpointStatus struct {
-	Service string `json:"service"`
-	Path    string `json:"path"`
-	Ready   bool   `json:"ready"`
+	Pod   string `json:"pod"`
+	Path  string `json:"path"`
+	Ready bool   `json:"ready"`
 }
 
 type ClientStatus struct {
 	Client    string                 `json:"client"`
+	LastSeen  metav1.Time            `json:"lastSeen"`
 	Ready     bool                   `json:"ready"`
 	Endpoints []ClientEndpointStatus `json:"endpoints"`
 }

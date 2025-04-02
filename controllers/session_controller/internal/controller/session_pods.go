@@ -20,7 +20,7 @@ func (r *SessionReconciler) ReconcileSessionPods(
 	logger := log.FromContext(ctx)
 
 	var sessionPods corev1.PodList
-	fieldSelector := ctrlClient.MatchingFields{ownerField: session.Name, podTypeField: "session"}
+	fieldSelector := ctrlClient.MatchingFields{podOwnerField: session.Name, podTypeField: "session"}
 
 	if err := r.List(ctx, &sessionPods, ctrlClient.InNamespace(namespace), fieldSelector); err != nil {
 		utils.SetReadyCondition(session, metav1.ConditionUnknown, utils.GET_PODS_FAILED_REASON,

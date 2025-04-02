@@ -16,10 +16,6 @@ spec:
             ports:
               - containerPort: 80
   clientServices: []
-  clients:
-    - id: client2
-      connected: true
-    - id: client1
-      connected: true
-  timeoutSeconds: 120
+  clients: []
+  timeoutSeconds: 20
   reutilizeTimeoutSeconds: 120

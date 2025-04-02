@@ -7268,14 +7268,14 @@ spec:
                     endpoints:
                       items:
                         properties:
-                          ip:
+                          path:
                             type: string
                           ready:
                             type: boolean
                           service:
                             type: string
                         required:
-                        - ip
+                        - path
                         - ready
                         - service
                         type: object

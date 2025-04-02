@@ -72,9 +72,11 @@ func (r *SessionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	statusSnapshot := session.Status.DeepCopy()
 
-	if err := r.ReconcileSessionPods(ctx, req.Namespace, &session); err != nil {
-		r.Status().Update(ctx, &session)
-		return ctrl.Result{}, err
+	if len(session.Spec.Clients) != 0 {
+		if err := r.ReconcileSessionPods(ctx, req.Namespace, &session); err != nil {
+			r.Status().Update(ctx, &session)
+			return ctrl.Result{}, err
+		}
 	}
 
 	if StatusHasChanged(statusSnapshot, &session.Status) {
@@ -108,7 +110,7 @@ func StatusHasChanged(oldStatus *telepresencev1.SessionStatus, newStatus *telepr
 	return false
 }
 
-func IndexByOwner(obj client.Object) []string {
+func IndexPodByOwner(obj client.Object) []string {
 	owner := metav1.GetControllerOf(obj)
 
 	if owner == nil {
@@ -134,17 +136,17 @@ func IndexPodByType(obj client.Object) []string {
 }
 
 var (
-	ownerField   = "ownerField"
-	podTypeField = "podTypeField"
-	apiGVStr     = telepresencev1.GroupVersion.String()
+	podOwnerField = "ownerField"
+	podTypeField  = "podTypeField"
+	apiGVStr      = telepresencev1.GroupVersion.String()
 )
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *SessionReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.Pod{}, ownerField,
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.Pod{}, podOwnerField,
 		func(o client.Object) []string {
 
-			return IndexByOwner(o)
+			return IndexPodByOwner(o)
 		}); err != nil {
 		return err
 	}
