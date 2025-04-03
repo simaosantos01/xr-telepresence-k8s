@@ -4,10 +4,12 @@ metadata:
   labels:
     app.kubernetes.io/name: telepresencekubctrl
     app.kubernetes.io/managed-by: kustomize
-  name: session1
+  name: session-1
 spec:
-  sessionServices:
+  sessionServices: []
+  clientServices:
     - name: test
+      maxClients: 2
       labels: {}
       spec:
         containers:
@@ -15,7 +17,13 @@ spec:
             image: nginx:latest
             ports:
               - containerPort: 80
-  clientServices: []
-  clients: []
+                name: hello
+  clients:
+    - id: client1
+      connected: true
+    - id: client2
+      connected: true
+    - id: client3
+      connected: true
   timeoutSeconds: 20
   reutilizeTimeoutSeconds: 120

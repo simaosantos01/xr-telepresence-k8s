@@ -7268,23 +7268,29 @@ spec:
                     endpoints:
                       items:
                         properties:
-                          path:
+                          paths:
+                            items:
+                              type: string
+                            type: array
+                          pod:
                             type: string
                           ready:
                             type: boolean
-                          service:
-                            type: string
                         required:
-                        - path
+                        - paths
+                        - pod
                         - ready
-                        - service
                         type: object
                       type: array
+                    lastSeen:
+                      format: date-time
+                      type: string
                     ready:
                       type: boolean
                   required:
                   - client
                   - endpoints
+                  - lastSeen
                   - ready
                   type: object
                 type: array

@@ -62,19 +62,27 @@ func (r *SessionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, nil
 
 	} else if err != nil {
-		utils.SetReadyCondition(&session, metav1.ConditionUnknown, utils.RESOURCE_NOT_FOUND_REASON,
-			utils.RESOURCE_NOT_FOUND_MESSAGE)
-
-		r.Status().Update(ctx, &session)
 		logger.Error(err, "unable to get session resource")
 		return ctrl.Result{}, err
 	}
 
 	statusSnapshot := session.Status.DeepCopy()
 
-	if len(session.Spec.Clients) != 0 {
+	if len(session.Spec.Clients) != 0 && len(session.Spec.SessionServices) > 0 {
 		if err := r.ReconcileSessionPods(ctx, req.Namespace, &session); err != nil {
 			r.Status().Update(ctx, &session)
+			return ctrl.Result{}, err
+		}
+	}
+
+	if len(session.Spec.ClientServices) > 0 {
+		if err := r.ReconcileClientPods(ctx, req.Namespace, &session); err != nil &&
+			StatusHasChanged(statusSnapshot, &session.Status) {
+
+			r.Status().Update(ctx, &session)
+			return ctrl.Result{}, err
+
+		} else if err != nil {
 			return ctrl.Result{}, err
 		}
 	}
@@ -107,7 +115,7 @@ func StatusHasChanged(oldStatus *telepresencev1.SessionStatus, newStatus *telepr
 		}
 	}
 
-	return false
+	return true // TODO: always updating the status!
 }
 
 func IndexPodByOwner(obj client.Object) []string {

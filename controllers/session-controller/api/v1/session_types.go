@@ -24,7 +24,7 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-type ClientService struct {
+type ClientPod struct {
 	Pod        `json:",inline"`
 	MaxClients int `json:"maxClients"`
 }
@@ -42,17 +42,17 @@ type Client struct {
 
 // SessionSpec defines the desired state of Session.
 type SessionSpec struct {
-	SessionServices         []Pod           `json:"sessionServices"`
-	ClientServices          []ClientService `json:"clientServices"`
-	TimeoutSeconds          int             `json:"timeoutSeconds"`
-	ReutilizeTimeoutSeconds int             `json:"reutilizeTimeoutSeconds"`
-	Clients                 []Client        `json:"clients"`
+	SessionServices         []Pod       `json:"sessionServices"`
+	ClientServices          []ClientPod `json:"clientServices"`
+	TimeoutSeconds          int         `json:"timeoutSeconds"`
+	ReutilizeTimeoutSeconds int         `json:"reutilizeTimeoutSeconds"`
+	Clients                 []Client    `json:"clients"`
 }
 
 type ClientEndpointStatus struct {
-	Pod   string `json:"pod"`
-	Path  string `json:"path"`
-	Ready bool   `json:"ready"`
+	Pod   string   `json:"pod"`
+	Paths []string `json:"paths"`
+	Ready bool     `json:"ready"`
 }
 
 type ClientStatus struct {

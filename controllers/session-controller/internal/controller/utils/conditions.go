@@ -13,9 +13,6 @@ const (
 	TYPE_READY ConditionType = "Ready"
 )
 
-const RESOURCE_NOT_FOUND_REASON = "ResourceNotFound"
-const RESOURCE_NOT_FOUND_MESSAGE = "Failed to get session resource"
-
 const GET_PODS_FAILED_REASON = "FailedGetSessionPods"
 const GET_PODS_FAILED_MESSAGE = "Failed to get the session pods"
 
