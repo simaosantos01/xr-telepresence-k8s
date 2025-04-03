@@ -32,10 +32,10 @@ func (r *SessionReconciler) ReconcileClientPods(
 	now := metav1.NewTime(time.Now())
 
 	// build map of clients present in status and clear the ones that expired due to lost connection
-	clientStatusMap := make(map[string]telepresencev1.ClientStatus, len(session.Status.Clients))
-	for _, client := range session.Status.Clients {
-		if !clientHasExpired(now, client.LastSeen, session.Spec.TimeoutSeconds) {
-			clientStatusMap[client.Client] = client
+	clientStatusMap := make(map[string]*telepresencev1.ClientStatus, len(session.Status.Clients))
+	for i := 0; i < len(session.Status.Clients); i++ {
+		if !clientHasExpired(now, session.Status.Clients[i].LastSeen, session.Spec.TimeoutSeconds) {
+			clientStatusMap[session.Status.Clients[i].Client] = &session.Status.Clients[i]
 		}
 	}
 
@@ -48,7 +48,7 @@ func (r *SessionReconciler) ReconcileClientPods(
 
 		clientSpecSet[client.Id] = struct{}{}
 
-		if ok && !client.Connected && value.LastSeen == defaultTime {
+		if ok && !client.Connected && value.LastSeen.Time.Unix() == defaultTime.Time.Unix() {
 			// client lost connection
 			value.LastSeen = now
 		} else if !ok && client.Connected {
@@ -73,7 +73,7 @@ func (r *SessionReconciler) ReconcileClientPods(
 
 		} else {
 			// client is connected
-			buildAllocationMap(allocationMap, v)
+			buildAllocationMap(allocationMap, *v)
 		}
 	}
 

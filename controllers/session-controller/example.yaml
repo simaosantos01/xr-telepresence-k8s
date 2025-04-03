@@ -24,6 +24,6 @@ spec:
     - id: client2
       connected: true
     - id: client3
-      connected: true
-  timeoutSeconds: 20
+      connected: true  
+  timeoutSeconds: 8000
   reutilizeTimeoutSeconds: 120
