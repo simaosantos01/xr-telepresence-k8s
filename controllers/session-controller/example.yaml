@@ -19,11 +19,11 @@ spec:
               - containerPort: 80
                 name: hello
   clients:
-    - id: client1
-      connected: true
     - id: client2
       connected: true
     - id: client3
-      connected: true  
-  timeoutSeconds: 8000
+      connected: true
+    - id: client4
+      connected: true
+  timeoutSeconds: 10
   reutilizeTimeoutSeconds: 120

@@ -36,6 +36,10 @@ func (r *SessionReconciler) ReconcileClientPods(
 	for i := 0; i < len(session.Status.Clients); i++ {
 		if !clientHasExpired(now, session.Status.Clients[i].LastSeen, session.Spec.TimeoutSeconds) {
 			clientStatusMap[session.Status.Clients[i].Client] = &session.Status.Clients[i]
+		} else {
+			// since the client expired we can remove it from the status
+			session.Status.Clients = append(session.Status.Clients[:i], session.Status.Clients[i+1:]...)
+			i--
 		}
 	}
 
@@ -66,14 +70,17 @@ func (r *SessionReconciler) ReconcileClientPods(
 	 */
 	allocationMap := make(map[string]allocationValue, len(session.Spec.ClientServices))
 	scaffoldAllocationMap(allocationMap, session.Spec.ClientServices)
-	for k, v := range clientStatusMap {
-		if _, ok := clientSpecSet[k]; !ok {
-			// client left the session (exists in status but not in spec)
-			delete(clientStatusMap, k)
+	for i := 0; i < len(session.Status.Clients); i++ {
+		client := session.Status.Clients[i]
 
+		if _, ok := clientSpecSet[client.Client]; !ok {
+			// client left the session (exists in status but not in spec)
+			delete(clientStatusMap, client.Client)
+			session.Status.Clients = append(session.Status.Clients[:i], session.Status.Clients[i+1:]...)
+			i--
 		} else {
 			// client is connected
-			buildAllocationMap(allocationMap, *v)
+			buildAllocationMap(allocationMap, client)
 		}
 	}
 
@@ -90,8 +97,8 @@ func clientHasExpired(now metav1.Time, lastSeen metav1.Time, timeoutSeconds int)
 		return false
 	}
 
-	return lastSeen.Add(time.Second*time.Duration(timeoutSeconds)).Before(now.Time) ||
-		lastSeen.Add(time.Second*time.Duration(timeoutSeconds)).Equal(now.Time)
+	return lastSeen.Time.Add(time.Second*time.Duration(timeoutSeconds)).Before(now.Time) ||
+		lastSeen.Time.Add(time.Second*time.Duration(timeoutSeconds)).Equal(now.Time)
 }
 
 func scaffoldAllocationMap(allocationMap map[string]allocationValue, clientPods []telepresencev1.ClientPod) {
