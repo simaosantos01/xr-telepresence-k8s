@@ -8,7 +8,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	telepresencev1 "mr.telepresence/controller/api/v1"
 	"mr.telepresence/controller/internal/controller/utils"
-	ctrlClient "sigs.k8s.io/controller-runtime/pkg/client"
+	client "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -20,9 +20,9 @@ func (r *SessionReconciler) ReconcileSessionPods(
 	logger := log.FromContext(ctx)
 
 	var sessionPods corev1.PodList
-	fieldSelector := ctrlClient.MatchingFields{podOwnerField: session.Name, podTypeField: "session"}
+	fieldSelector := client.MatchingFields{podOwnerField: session.Name, podTypeField: "session"}
 
-	if err := r.List(ctx, &sessionPods, ctrlClient.InNamespace(namespace), fieldSelector); err != nil {
+	if err := r.List(ctx, &sessionPods, client.InNamespace(namespace), fieldSelector); err != nil {
 		utils.SetReadyCondition(session, metav1.ConditionUnknown, utils.GET_PODS_FAILED_REASON,
 			utils.GET_PODS_FAILED_MESSAGE)
 
@@ -56,7 +56,7 @@ func (r *SessionReconciler) ReconcileSessionPods(
 }
 
 func restorePods(
-	k8sclient ctrlClient.Client,
+	rClient client.Client,
 	scheme *runtime.Scheme,
 	ctx context.Context,
 	session *telepresencev1.Session,
@@ -73,27 +73,12 @@ func restorePods(
 		key := session.Name + "-" + pod.Name
 
 		if _, exists := foundPodsMap[key]; !exists {
-			if err := spawnPod(pod, k8sclient, scheme, ctx, session); err != nil {
+			pod.Labels["type"] = "session"
+			if err := utils.SpawnPod(ctx, rClient, scheme, session, pod); err != nil {
 				return err
 			}
 		}
 	}
 
 	return nil
-}
-
-func spawnPod(
-	pod telepresencev1.Pod,
-	k8sclient ctrlClient.Client,
-	scheme *runtime.Scheme,
-	ctx context.Context,
-	session *telepresencev1.Session,
-) error {
-	pod.Name = session.Name + "-" + pod.Name
-	pod.Labels["telepresence"] = "true"
-	pod.Labels["type"] = "session"
-	pod.Labels["svc"] = pod.Name
-	corev1Pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: pod.Name, Labels: pod.Labels, Namespace: "default"},
-		Spec: pod.Spec}
-	return utils.SpawnPod(k8sclient, scheme, ctx, session, corev1Pod)
 }
