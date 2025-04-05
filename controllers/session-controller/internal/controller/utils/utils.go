@@ -43,7 +43,6 @@ func SpawnPod(
 
 	logger := log.FromContext(ctx)
 
-	pod.Name = session.Name + "-" + pod.Name
 	pod.Labels["telepresence"] = "true"
 	pod.Labels["svc"] = pod.Name
 

@@ -324,7 +324,7 @@ func reconcilePods(
 				setClientStatusReadiness(false, instance.Name, instance.Clients, clientStatusMap)
 				pod := telepresencev1.Pod{
 					Name:   instance.Name,
-					Labels: map[string]string{"type": "session"},
+					Labels: map[string]string{"type": "client"},
 					Spec:   v.Pod.Spec,
 				}
 

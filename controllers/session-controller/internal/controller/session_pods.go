@@ -73,6 +73,7 @@ func restorePods(
 		key := session.Name + "-" + pod.Name
 
 		if _, exists := foundPodsMap[key]; !exists {
+			pod.Name = session.Name + "-" + pod.Name
 			pod.Labels["type"] = "session"
 			if err := utils.SpawnPod(ctx, rClient, scheme, session, pod); err != nil {
 				return err
