@@ -75,14 +75,12 @@ func (r *SessionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
+	var clientPodsToSpawn []telepresencev1.Pod
 	if len(session.Spec.ClientServices) > 0 {
-		if err := r.ReconcileClientPods(ctx, req.Namespace, &session); err != nil &&
-			StatusHasChanged(statusSnapshot, &session.Status) {
+		var err error
+		clientPodsToSpawn, err = r.ReconcileClientPods(ctx, req.Namespace, &session)
 
-			r.Status().Update(ctx, &session)
-			return ctrl.Result{}, err
-
-		} else if err != nil {
+		if err != nil {
 			return ctrl.Result{}, err
 		}
 	}
@@ -90,6 +88,12 @@ func (r *SessionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if StatusHasChanged(statusSnapshot, &session.Status) {
 		if err := r.Status().Update(ctx, &session); err != nil {
 			logger.Error(err, "unable to update session resource")
+			return ctrl.Result{}, err
+		}
+	}
+
+	for _, pod := range clientPodsToSpawn {
+		if err := utils.SpawnPod(ctx, r.Client, r.Scheme, &session, &pod); err != nil {
 			return ctrl.Result{}, err
 		}
 	}

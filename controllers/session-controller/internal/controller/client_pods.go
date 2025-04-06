@@ -2,14 +2,12 @@ package controller
 
 import (
 	"context"
-	"sort"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -32,10 +30,20 @@ type podInstance struct {
 func (r *SessionReconciler) ReconcileClientPods(
 	ctx context.Context,
 	namespace string,
-	session *telepresencev1.Session) error {
+	session *telepresencev1.Session,
+) ([]telepresencev1.Pod, error) {
 
 	logger := log.FromContext(ctx)
 	now := metav1.NewTime(time.Now())
+
+	// Find pods in the cluster
+	var clientPods corev1.PodList
+	fieldSelector := client.MatchingFields{podOwnerField: session.Name, podTypeField: "client"}
+
+	if err := r.List(ctx, &clientPods, client.InNamespace(namespace), fieldSelector); err != nil {
+		logger.Error(err, "unable to get client pods", "session", session.Name)
+		return nil, err
+	}
 
 	// build map of clients present in status and clear the ones that expired due to lost connection
 	clientStatusMap := make(map[string]*telepresencev1.ClientStatus, len(session.Status.Clients))
@@ -70,15 +78,6 @@ func (r *SessionReconciler) ReconcileClientPods(
 		}
 	}
 
-	// Find pods in the cluster
-	var clientPods corev1.PodList
-	fieldSelector := client.MatchingFields{podOwnerField: session.Name, podTypeField: "client"}
-
-	if err := r.List(ctx, &clientPods, client.InNamespace(namespace), fieldSelector); err != nil {
-		logger.Error(err, "unable to get client pods", "session", session.Name)
-		return err
-	}
-
 	/**
 	 * Here we build the allocation Map. Each map key corresponds to a clientService declared in the spec, and the value
 	 * holds the service (pod) spec and a list with the respective pod instances serving a group of clients.
@@ -87,7 +86,7 @@ func (r *SessionReconciler) ReconcileClientPods(
 	podInstancesMap := make(map[string]map[string]corev1.Pod, len(clientPods.Items))
 	scaffoldAllocationMap(allocationMap, session.Spec.ClientServices)
 	scaffoldPodInstancesMap(clientPods.Items, podInstancesMap)
-	podInstancesToReutilizeMap := copyPodInstancesMap(podInstancesMap)
+	podInstancesToReutilizeMap := deepCopyPodInstancesMap(podInstancesMap)
 
 	for i := 0; i < len(session.Status.Clients); i++ {
 		client := session.Status.Clients[i]
@@ -99,18 +98,18 @@ func (r *SessionReconciler) ReconcileClientPods(
 			i--
 		} else {
 			// client is connected
-			buildAllocationMap(allocationMap, client, podInstancesToReutilizeMap)
+			buildAllocationMap(allocationMap, &client, podInstancesToReutilizeMap)
 		}
 	}
 
 	// allocate the new clients
 	if len(newClients) != 0 {
-		tPodInstancesToReutilizeMap := transformPodInstancesToReutilizeMap(podInstancesToReutilizeMap)
-		allocateClients(allocationMap, newClients, session, tPodInstancesToReutilizeMap)
+		allocateClients(allocationMap, newClients, session, podInstancesToReutilizeMap)
 	}
 
 	// reconcile workload
-	return reconcilePods(ctx, r.Client, r.Scheme, session, allocationMap, clientStatusMap, podInstancesMap)
+	podsToSpawn := reconcilePods(allocationMap, clientStatusMap, podInstancesMap)
+	return podsToSpawn, nil
 }
 
 func clientHasExpired(now metav1.Time, lastSeen metav1.Time, timeoutSeconds int) bool {
@@ -141,7 +140,7 @@ func scaffoldPodInstancesMap(clientPods []corev1.Pod, podInstancesMap map[string
 	}
 }
 
-func copyPodInstancesMap(podInstancesMap map[string]map[string]corev1.Pod) map[string]map[string]corev1.Pod {
+func deepCopyPodInstancesMap(podInstancesMap map[string]map[string]corev1.Pod) map[string]map[string]corev1.Pod {
 	copy := make(map[string]map[string]corev1.Pod, len(podInstancesMap))
 
 	for k, v := range podInstancesMap {
@@ -157,7 +156,7 @@ func copyPodInstancesMap(podInstancesMap map[string]map[string]corev1.Pod) map[s
 
 func buildAllocationMap(
 	allocationMap map[string]allocationValue,
-	client telepresencev1.ClientStatus,
+	client *telepresencev1.ClientStatus,
 	podInstancesToReutilizeMap map[string]map[string]corev1.Pod,
 ) {
 	for _, endpoint := range client.Endpoints {
@@ -174,7 +173,7 @@ func buildAllocationMap(
 				podInstances[i].Clients = append(podInstances[i].Clients, client.Client)
 			}
 
-			if found && i < len(podInstances)-1 && instanceIsLessThen(instance, podInstances[i+1]) {
+			if found && i < len(podInstances)-1 && instanceIsLessThen(&instance, &podInstances[i+1]) {
 				podInstances[i] = podInstances[i+1]
 				podInstances[i+1] = instance
 			} else if found {
@@ -188,7 +187,7 @@ func buildAllocationMap(
 			for i := len(podInstances) - 1; i >= 0; i-- {
 				instance := podInstances[i]
 
-				if i > 0 && !instanceIsLessThen(instance, podInstances[i-1]) {
+				if i > 0 && !instanceIsLessThen(&instance, &podInstances[i-1]) {
 					podInstances[i] = podInstances[i-1]
 					podInstances[i-1] = instance
 				} else {
@@ -203,7 +202,7 @@ func buildAllocationMap(
 	}
 }
 
-func instanceIsLessThen(instanceA podInstance, instanceB podInstance) bool {
+func instanceIsLessThen(instanceA *podInstance, instanceB *podInstance) bool {
 	if len(instanceA.Clients) < len(instanceB.Clients) {
 		return true
 	}
@@ -218,30 +217,11 @@ func instanceIsLessThen(instanceA podInstance, instanceB podInstance) bool {
 	return false
 }
 
-func transformPodInstancesToReutilizeMap(
-	podInstancesToReutilizeMap map[string]map[string]corev1.Pod,
-) map[string][]string {
-
-	mapping := make(map[string][]string, len(podInstancesToReutilizeMap))
-
-	for k, v := range podInstancesToReutilizeMap {
-		mapping[k] = []string{}
-
-		for instance := range v {
-			mapping[k] = append(mapping[k], instance)
-		}
-
-		sort.Strings(mapping[k])
-	}
-
-	return mapping
-}
-
 func allocateClients(
 	allocationMap map[string]allocationValue,
 	newClients []string,
 	session *telepresencev1.Session,
-	podInstancesToReutilize map[string][]string,
+	podInstancesToReutilize map[string]map[string]corev1.Pod,
 ) {
 	for _, client := range newClients {
 		endpoints := []telepresencev1.ClientEndpointStatus{}
@@ -256,7 +236,7 @@ func allocateClients(
 				if podInstanceName == "" {
 					podInstanceName = session.Name + "-" + key + "-" + uuid.New().String()[:4]
 				} else {
-					podInstancesToReutilize[key] = podInstancesToReutilize[key][1:]
+					delete(podInstancesToReutilize[key], podInstanceName)
 				}
 
 				value.Instances = append(allocationMap[key].Instances,
@@ -292,12 +272,12 @@ func findFirstPodInstanceAvailable(maxClients int, instances []podInstance) int 
 	return result
 }
 
-func reutilizePodInstance(instances []string) string {
-	if len(instances) == 0 {
-		return ""
+func reutilizePodInstance(instances map[string]corev1.Pod) string {
+	for k := range instances {
+		return k
 	}
 
-	return instances[0]
+	return ""
 }
 
 func buildEndpoint(podInstanceName string, podSpec corev1.PodSpec) telepresencev1.ClientEndpointStatus {
@@ -317,14 +297,12 @@ func buildEndpoint(podInstanceName string, podSpec corev1.PodSpec) telepresencev
 }
 
 func reconcilePods(
-	ctx context.Context,
-	rClient client.Client,
-	scheme *runtime.Scheme,
-	session *telepresencev1.Session,
 	allocationMap map[string]allocationValue,
 	clientStatusMap map[string]*telepresencev1.ClientStatus,
 	podInstancesMap map[string]map[string]corev1.Pod,
-) error {
+) []telepresencev1.Pod {
+	podsToSpawn := []telepresencev1.Pod{}
+
 	for _, v := range allocationMap {
 		for _, instance := range v.Instances {
 
@@ -337,10 +315,7 @@ func reconcilePods(
 					Spec:   v.Pod.Spec,
 				}
 
-				// TODO: SPAWN ONLY AFTER THE OBJECT GETS UPDATED
-				if err := utils.SpawnPod(ctx, rClient, scheme, session, pod); err != nil {
-					return err
-				}
+				podsToSpawn = append(podsToSpawn, pod)
 			} else {
 				// instance was found, we still have to check its status and report it
 				readyStatus := utils.ExtractReadyConditionStatusFromPod(&value)
@@ -354,7 +329,7 @@ func reconcilePods(
 		}
 	}
 
-	return nil
+	return podsToSpawn
 }
 
 func setClientStatusReadiness(

@@ -39,7 +39,7 @@ func SpawnPod(
 	rClient client.Client,
 	scheme *runtime.Scheme,
 	session *telepresencev1.Session,
-	pod telepresencev1.Pod,
+	pod *telepresencev1.Pod,
 ) error {
 
 	logger := log.FromContext(ctx)

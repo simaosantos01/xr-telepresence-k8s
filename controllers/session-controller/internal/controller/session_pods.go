@@ -15,7 +15,8 @@ import (
 func (r *SessionReconciler) ReconcileSessionPods(
 	ctx context.Context,
 	namespace string,
-	session *telepresencev1.Session) error {
+	session *telepresencev1.Session,
+) error {
 
 	logger := log.FromContext(ctx)
 
@@ -40,7 +41,7 @@ func (r *SessionReconciler) ReconcileSessionPods(
 				utils.PODS_NOT_READY_MESSAGE)
 		}
 	} else {
-		if err := restorePods(r.Client, r.Scheme, ctx, session, sessionPods.Items,
+		if err := restorePods(ctx, r.Client, r.Scheme, session, sessionPods.Items,
 			session.Spec.SessionServices); err != nil {
 
 			utils.SetReadyCondition(session, metav1.ConditionFalse, utils.PODS_NOT_READY_REASON,
@@ -56,9 +57,9 @@ func (r *SessionReconciler) ReconcileSessionPods(
 }
 
 func restorePods(
+	ctx context.Context,
 	rClient client.Client,
 	scheme *runtime.Scheme,
-	ctx context.Context,
 	session *telepresencev1.Session,
 	foundPods []corev1.Pod,
 	requiredPods []telepresencev1.Pod,
@@ -75,7 +76,7 @@ func restorePods(
 		if _, exists := foundPodsMap[key]; !exists {
 			pod.Name = session.Name + "-" + pod.Name
 			pod.Labels["type"] = "session"
-			if err := utils.SpawnPod(ctx, rClient, scheme, session, pod); err != nil {
+			if err := utils.SpawnPod(ctx, rClient, scheme, session, &pod); err != nil {
 				return err
 			}
 		}
