@@ -132,7 +132,12 @@ func scaffoldPodInstancesMap(clientPods []corev1.Pod, podInstancesMap map[string
 ) {
 	for _, pod := range clientPods {
 		podType := strings.Split(pod.Name, "-")[2]
-		podInstancesMap[podType][pod.Name] = pod
+
+		if _, ok := podInstancesMap[podType]; !ok {
+			podInstancesMap[podType] = map[string]corev1.Pod{pod.Name: pod}
+		} else {
+			podInstancesMap[podType][pod.Name] = pod
+		}
 	}
 }
 
@@ -140,7 +145,11 @@ func copyPodInstancesMap(podInstancesMap map[string]map[string]corev1.Pod) map[s
 	copy := make(map[string]map[string]corev1.Pod, len(podInstancesMap))
 
 	for k, v := range podInstancesMap {
-		copy[k] = v
+		copy[k] = make(map[string]corev1.Pod, len(v))
+
+		for innerK, innerV := range copy[k] {
+			copy[k][innerK] = innerV
+		}
 	}
 
 	return copy
@@ -328,12 +337,15 @@ func reconcilePods(
 					Spec:   v.Pod.Spec,
 				}
 
+				// TODO: SPAWN ONLY AFTER THE OBJECT GETS UPDATED
 				if err := utils.SpawnPod(ctx, rClient, scheme, session, pod); err != nil {
 					return err
 				}
 			} else {
 				// instance was found, we still have to check its status and report it
-				if *utils.ExtractReadyConditionStatusFromPod(&value) == corev1.ConditionStatus(corev1.PodReady) {
+				readyStatus := utils.ExtractReadyConditionStatusFromPod(&value)
+
+				if readyStatus == corev1.ConditionTrue {
 					setClientStatusReadiness(true, instance.Name, instance.Clients, clientStatusMap)
 				} else {
 					setClientStatusReadiness(false, instance.Name, instance.Clients, clientStatusMap)
