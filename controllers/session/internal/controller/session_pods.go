@@ -1,0 +1,86 @@
+package controller
+
+import (
+	"context"
+
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	telepresencev1alpha1 "mr.telepresence/session/api/v1alpha1"
+	"mr.telepresence/session/internal/controller/utils"
+	client "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+)
+
+func (r *SessionReconciler) ReconcileSessionPods(
+	ctx context.Context,
+	namespace string,
+	session *telepresencev1alpha1.Session,
+) error {
+
+	logger := log.FromContext(ctx)
+
+	var sessionPods corev1.PodList
+	fieldSelector := client.MatchingFields{podOwnerField: session.Name, podTypeField: "session"}
+
+	if err := r.List(ctx, &sessionPods, client.InNamespace(namespace), fieldSelector); err != nil {
+		utils.SetReadyCondition(session, metav1.ConditionUnknown, utils.GET_PODS_FAILED_REASON,
+			utils.GET_PODS_FAILED_MESSAGE)
+
+		logger.Error(err, "unable to get session pods", "session", session.Name)
+		return err
+	}
+
+	if len(session.Spec.SessionServices) == len(sessionPods.Items) {
+		ready := utils.PodsAreReady(&sessionPods)
+
+		if ready {
+			utils.SetReadyCondition(session, metav1.ConditionTrue, utils.PODS_READY_REASON, utils.PODS_READY_MESSAGE)
+		} else {
+			utils.SetReadyCondition(session, metav1.ConditionFalse, utils.PODS_NOT_READY_REASON,
+				utils.PODS_NOT_READY_MESSAGE)
+		}
+	} else {
+		if err := restorePods(ctx, r.Client, r.Scheme, session, sessionPods.Items,
+			session.Spec.SessionServices); err != nil {
+
+			utils.SetReadyCondition(session, metav1.ConditionFalse, utils.PODS_NOT_READY_REASON,
+				utils.PODS_NOT_READY_MESSAGE)
+
+			return err
+		}
+		utils.SetReadyCondition(session, metav1.ConditionUnknown, utils.PODS_RECONCILED_REASON,
+			utils.PODS_RECONCILED_MESSAGE)
+	}
+
+	return nil
+}
+
+func restorePods(
+	ctx context.Context,
+	rClient client.Client,
+	scheme *runtime.Scheme,
+	session *telepresencev1alpha1.Session,
+	foundPods []corev1.Pod,
+	requiredPods []telepresencev1alpha1.Pod,
+) error {
+	foundPodsMap := make(map[string]struct{}, len(foundPods))
+
+	for _, pod := range foundPods {
+		foundPodsMap[pod.Name] = struct{}{}
+	}
+
+	for _, pod := range requiredPods {
+		key := session.Name + "-" + pod.Name
+
+		if _, exists := foundPodsMap[key]; !exists {
+			pod.Name = session.Name + "-" + pod.Name
+			pod.Labels["type"] = "session"
+			if err := utils.SpawnPod(ctx, rClient, scheme, session, &pod); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
