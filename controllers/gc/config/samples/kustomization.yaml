@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- gc_v1alpha1_gcregistration.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

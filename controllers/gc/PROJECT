@@ -7,4 +7,13 @@ layout:
 - go.kubebuilder.io/v4
 projectName: gc
 repo: mr.telepresence/gc
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  domain: mr.telepresence
+  group: gc
+  kind: GCRegistration
+  path: mr.telepresence/gc/api/v1alpha1
+  version: v1alpha1
 version: "3"

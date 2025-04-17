@@ -12,3 +12,13 @@ rules:
   - get
   - list
   - watch
+- apiGroups:
+  - events.k8s.io/v1
+  resources:
+  - events
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - watch

@@ -10,7 +10,6 @@ require (
 	k8s.io/api v0.31.0
 	k8s.io/apimachinery v0.31.0
 	k8s.io/client-go v0.31.0
-	mr.telepresence/session v0.0.0-00010101000000-000000000000
 	sigs.k8s.io/controller-runtime v0.19.4
 )
 
@@ -99,5 +98,3 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
-
-replace mr.telepresence/session => ../session

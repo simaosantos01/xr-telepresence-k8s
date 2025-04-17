@@ -2,12 +2,11 @@ package controller
 
 import (
 	"context"
-	"time"
-
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/api/events/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	telepresencev1alpha1 "mr.telepresence/session/api/v1alpha1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -16,6 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"time"
 )
 
 type GCReconciler struct {
@@ -32,46 +32,16 @@ func (r *GCReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Re
 	now := time.Now()
 	requeueAfter := time.Second * time.Duration(requeueAfterSec)
 
-	var eventList v1.EventList
-	if err := r.List(ctx, &eventList); err != nil {
-		logger.Error(err, "unable to get event resources")
-		return ctrl.Result{}, err
-	}
-
-	sessionMap := make(map[string]*telepresencev1alpha1.Session)
-
-	for _, event := range eventList.Items {
-		sessionName := event.Regarding.Name
-		sessionNamespace := event.Regarding.Namespace
-		var session telepresencev1alpha1.Session
-
-		if _, ok := sessionMap[sessionName]; !ok {
-			if err := r.Get(ctx, types.NamespacedName{Namespace: sessionNamespace, Name: sessionName}, &session); err != nil {
-				logger.Error(err, "unable to get session resource")
-				return ctrl.Result{}, err
-			}
-
-			sessionMap[sessionName] = &session
-		} else {
-			session = *sessionMap[sessionName]
-		}
-
-		if now.Sub(event.CreationTimestamp.Time) > time.Second * time.Duration(session.Spec.TimeoutSeconds) {
-			
-		}
-	}
-
 	return ctrl.Result{RequeueAfter: requeueAfter}, nil
 }
 
 var (
 	requeueAfterSec = 10
-	regardingField  = "regarding"
 )
 
 func (r *GCReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &v1.Event{}, regardingField,
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &v1.Event{}, eventRegardingField,
 		func(o client.Object) []string {
 			event := o.(*v1.Event)
 			return []string{event.Regarding.Kind}
@@ -81,7 +51,7 @@ func (r *GCReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		Watches(
-			&telepresencev1alpha1.Session{},
+			&v1.Event{},
 			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
 				return []reconcile.Request{{NamespacedName: types.NamespacedName{
 					Name: obj.GetName(), Namespace: obj.GetNamespace()}}}
