@@ -2,114 +2,108 @@ package controller
 
 import (
 	"context"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	telepresencev1alpha1 "mr.telepresence/session/api/v1alpha1"
+	gcv1alpha1 "mr.telepresence/gc/api/v1alpha1"
+
+	sessionv1alpha1 "mr.telepresence/session/api/v1alpha1"
 	"mr.telepresence/session/internal/controller/utils"
 )
 
 var defaultTime = metav1.Time{Time: time.Date(1, 1, 1, 1, 1, 1, 1, time.UTC)}
 
 type allocationValue struct {
-	Pod       telepresencev1alpha1.ClientPod
-	Instances []podInstance
+	PodTemplate sessionv1alpha1.ClientPodTemplate
+	Pods        []pod
 }
 
-type podInstance struct {
+type pod struct {
 	Name    string
-	Clients []string
+	Clients []podClient
+}
+
+type podClient struct {
+	Id        string
+	Connected bool
 }
 
 func (r *SessionReconciler) ReconcileClientPods(
 	ctx context.Context,
 	namespace string,
-	session *telepresencev1alpha1.Session,
-) ([]telepresencev1alpha1.Pod, error) {
+	session *sessionv1alpha1.Session,
+	gcRegistrations []gcv1alpha1.GCRegistration,
+) ([]corev1.Pod, error) {
 
 	logger := log.FromContext(ctx)
 	now := metav1.NewTime(time.Now())
 
 	// Find pods in the cluster
 	var clientPods corev1.PodList
-	fieldSelector := client.MatchingFields{podOwnerField: session.Name, podTypeField: "client"}
+	fieldSelector := client.MatchingFields{utils.PodOwnerField: session.Name, utils.PodTypeField: "client"}
 
 	if err := r.List(ctx, &clientPods, client.InNamespace(namespace), fieldSelector); err != nil {
 		logger.Error(err, "unable to get client pods", "session", session.Name)
 		return nil, err
 	}
 
-	// build map of clients present in status and clear the ones that expired due to lost connection
-	clientStatusMap := make(map[string]*telepresencev1alpha1.ClientStatus, len(session.Status.Clients))
-	for i := 0; i < len(session.Status.Clients); i++ {
-		if !clientHasExpired(now, session.Status.Clients[i].LastSeen, session.Spec.TimeoutSeconds) {
-			clientStatusMap[session.Status.Clients[i].Client] = &session.Status.Clients[i]
-		} else {
-			// since the client expired we can remove it from the status
-			session.Status.Clients = append(session.Status.Clients[:i], session.Status.Clients[i+1:]...)
-			i--
-		}
-	}
+	// Remove clients from the status if their reconnection grace period has expired
+	cleanExpiredClientsFromStatus(now, session.Status.Clients, session.Spec.TimeoutSeconds)
 
-	newClients := []string{}
-	clientSpecSet := make(map[string]struct{})
+	// Check for new clients and lost connections
+	newClients := handleClientChanges(now, session.Spec.Clients, session.Status.Clients)
 
-	// compare spec clients with status clients and check for lost connections, new clients and clients that reconnected
-	for _, client := range session.Spec.Clients {
-		value, ok := clientStatusMap[client.Id]
+	// Build the allocation map where each key represents a pod template name defined in the spec
+	// The corresponding value is an object containing the pod template and a list of pods
+	// currently running in the cluster that were created from that template
+	allocationMap := initAllocationMap(session.Spec.ClientPodTemplates.Items)
+	templatePodToReutilizeMap := templatePodMapping(clientPods.Items)
 
-		clientSpecSet[client.Id] = struct{}{}
-
-		if ok && !client.Connected && value.LastSeen.Time.Unix() == defaultTime.Time.Unix() {
-			// client lost connection
-			value.LastSeen = now
-		} else if !ok && client.Connected {
-			// new client found
-			newClients = append(newClients, client.Id)
-		} else if client.Connected {
-			// client may have reconected
-			value.LastSeen = defaultTime
-		}
-	}
-
-	/**
-	 * Here we build the allocation Map. Each map key corresponds to a clientService declared in the spec, and the value
-	 * holds the service (pod) spec and a list with the respective pod instances serving a group of clients.
-	 */
-	allocationMap := make(map[string]allocationValue, len(session.Spec.ClientServices))
-	podInstancesMap := make(map[string]map[string]corev1.Pod, len(clientPods.Items))
-	scaffoldAllocationMap(allocationMap, session.Spec.ClientServices)
-	scaffoldPodInstancesMap(clientPods.Items, podInstancesMap)
-	podInstancesToReutilizeMap := deepCopyPodInstancesMap(podInstancesMap)
-
-	for i := 0; i < len(session.Status.Clients); i++ {
-		client := session.Status.Clients[i]
-
-		if _, ok := clientSpecSet[client.Client]; !ok {
+	for clientId, clientStatus := range session.Status.Clients {
+		if _, ok := session.Status.Clients[clientId]; !ok {
 			// client left the session (exists in status but not in spec)
-			delete(clientStatusMap, client.Client)
-			session.Status.Clients = append(session.Status.Clients[:i], session.Status.Clients[i+1:]...)
-			i--
+			delete(session.Status.Clients, clientId)
 		} else {
-			// client is connected
-			buildAllocationMap(allocationMap, &client, podInstancesToReutilizeMap)
+			// client may be connected to the session
+			isClientConnected := defaultTime.Unix() == clientStatus.LastSeenAt.Unix()
+			buildAllocationMap(clientId, &clientStatus, isClientConnected, allocationMap, templatePodToReutilizeMap)
 		}
 	}
 
 	// allocate the new clients
 	if len(newClients) != 0 {
-		allocateClients(allocationMap, newClients, session, podInstancesToReutilizeMap)
+		// sort pods in the allocation map so that new clients are allocated to the least empty ones
+		sortAllocationMap(allocationMap)
+		allocateClients(allocationMap, newClients, session, templatePodToReutilizeMap)
 	}
 
+	// creates and deletes gc registrations for pods to be handled by the gc controller
+	manageGCRegistrations(ctx, r.Client, session, allocationMap, templatePodToReutilizeMap, gcRegistrations)
+
 	// reconcile workload
-	podsToSpawn := reconcilePods(allocationMap, clientStatusMap, podInstancesMap)
+	templatePodMap := templatePodMapping(clientPods.Items)
+	podsToSpawn := reconcilePods(allocationMap, session.Status.Clients, templatePodMap)
 	return podsToSpawn, nil
+}
+
+func cleanExpiredClientsFromStatus(
+	now metav1.Time,
+	clients map[string]sessionv1alpha1.ClientStatus,
+	timeoutSeconds int,
+) {
+	for k, v := range clients {
+		if clientHasExpired(now, v.LastSeenAt, timeoutSeconds) {
+			delete(clients, k)
+		}
+	}
 }
 
 func clientHasExpired(now metav1.Time, lastSeen metav1.Time, timeoutSeconds int) bool {
@@ -121,96 +115,105 @@ func clientHasExpired(now metav1.Time, lastSeen metav1.Time, timeoutSeconds int)
 		lastSeen.Time.Add(time.Second*time.Duration(timeoutSeconds)).Equal(now.Time)
 }
 
-func scaffoldAllocationMap(allocationMap map[string]allocationValue, clientPodTypes []telepresencev1alpha1.ClientPod) {
-	for _, pod := range clientPodTypes {
-		allocationMap[pod.Name] = allocationValue{Pod: pod, Instances: []podInstance{}}
+func handleClientChanges(
+	now metav1.Time,
+	specClients map[string]bool,
+	statusClients map[string]sessionv1alpha1.ClientStatus,
+) []string {
+	newClients := []string{}
+
+	for specClient, connected := range specClients {
+		match, ok := statusClients[specClient]
+
+		if ok && !connected && match.LastSeenAt.Time.Unix() == defaultTime.Time.Unix() {
+			// client lost connection
+			match.LastSeenAt = now
+		} else if !ok && connected {
+			// new client found
+			newClients = append(newClients, specClient)
+		} else if connected {
+			// client may have reconected
+			match.LastSeenAt = defaultTime
+		}
 	}
+
+	return newClients
 }
 
-func scaffoldPodInstancesMap(clientPods []corev1.Pod, podInstancesMap map[string]map[string]corev1.Pod,
-) {
-	for _, pod := range clientPods {
-		podType := strings.Split(pod.Name, "-")[2]
+func initAllocationMap(clientPodTemplates []sessionv1alpha1.ClientPodTemplate) map[string]allocationValue {
+	allocationMap := make(map[string]allocationValue, len(clientPodTemplates))
 
-		if _, ok := podInstancesMap[podType]; !ok {
-			podInstancesMap[podType] = map[string]corev1.Pod{pod.Name: pod}
+	for _, podTemplate := range clientPodTemplates {
+		allocationMap[podTemplate.Name] = allocationValue{PodTemplate: podTemplate, Pods: []pod{}}
+	}
+	return allocationMap
+}
+
+func templatePodMapping(pods []corev1.Pod) map[string]map[string]corev1.Pod {
+	templatePodMap := make(map[string]map[string]corev1.Pod)
+
+	for _, pod := range pods {
+		templateName := strings.Split(pod.Name, "-")[2]
+
+		if _, ok := templatePodMap[templateName]; !ok {
+			templatePodMap[templateName] = map[string]corev1.Pod{pod.Name: pod}
 		} else {
-			podInstancesMap[podType][pod.Name] = pod
+			templatePodMap[templateName][pod.Name] = pod
 		}
 	}
-}
-
-func deepCopyPodInstancesMap(podInstancesMap map[string]map[string]corev1.Pod) map[string]map[string]corev1.Pod {
-	copy := make(map[string]map[string]corev1.Pod, len(podInstancesMap))
-
-	for k, v := range podInstancesMap {
-		copy[k] = make(map[string]corev1.Pod, len(v))
-
-		for innerK, innerV := range copy[k] {
-			copy[k][innerK] = innerV
-		}
-	}
-
-	return copy
+	return templatePodMap
 }
 
 func buildAllocationMap(
+	clientId string,
+	clientStatus *sessionv1alpha1.ClientStatus,
+	isClientConnected bool,
 	allocationMap map[string]allocationValue,
-	client *telepresencev1alpha1.ClientStatus,
-	podInstancesToReutilizeMap map[string]map[string]corev1.Pod,
+	templatePodToReutilizeMap map[string]map[string]corev1.Pod,
 ) {
-	for _, endpoint := range client.Endpoints {
-		clientPodType := strings.Split(endpoint.Pod, "-")[2]
-		podInstances := allocationMap[clientPodType].Instances
-		delete(podInstancesToReutilizeMap[clientPodType], endpoint.Pod)
+	client := podClient{Id: clientId, Connected: isClientConnected}
+
+	for podName := range clientStatus.PodStatus {
+		podTemplateName := strings.Split(podName, "-")[2]
+		pods := allocationMap[podTemplateName].Pods
+		delete(templatePodToReutilizeMap[podTemplateName], podName)
 
 		found := false
-		for i := 0; i < len(podInstances); i++ {
-			instance := podInstances[i]
+		for i := 0; i < len(pods); i++ {
+			pod := pods[i]
 
-			if !found && instance.Name == endpoint.Pod {
+			if !found && pod.Name == podName {
 				found = true
-				podInstances[i].Clients = append(podInstances[i].Clients, client.Client)
-			}
-
-			if found && i < len(podInstances)-1 && instanceIsLessThen(&instance, &podInstances[i+1]) {
-				podInstances[i] = podInstances[i+1]
-				podInstances[i+1] = instance
-			} else if found {
-				break
+				pods[i].Clients = append(pods[i].Clients, client)
 			}
 		}
 
 		if !found {
-			podInstances = append(podInstances, podInstance{Name: endpoint.Pod, Clients: []string{client.Client}})
-
-			for i := len(podInstances) - 1; i >= 0; i-- {
-				instance := podInstances[i]
-
-				if i > 0 && !instanceIsLessThen(&instance, &podInstances[i-1]) {
-					podInstances[i] = podInstances[i-1]
-					podInstances[i-1] = instance
-				} else {
-					break
-				}
-			}
+			pods = append(pods, pod{Name: podName, Clients: []podClient{client}})
 		}
 
-		value := allocationMap[clientPodType]
-		value.Instances = podInstances
-		allocationMap[clientPodType] = value
+		allocValue := allocationMap[podTemplateName]
+		allocValue.Pods = pods
 	}
 }
 
-func instanceIsLessThen(instanceA *podInstance, instanceB *podInstance) bool {
-	if len(instanceA.Clients) < len(instanceB.Clients) {
+func sortAllocationMap(allocationMap map[string]allocationValue) {
+	for _, allocValue := range allocationMap {
+		sort.Slice(allocValue.Pods, func(i, j int) bool {
+			return !comparePods(&allocValue.Pods[i], &allocValue.Pods[j])
+		})
+	}
+}
+
+func comparePods(podA *pod, podB *pod) bool {
+	if len(podA.Clients) < len(podB.Clients) {
 		return true
 	}
 
-	podIdA := instanceA.Name[strings.LastIndex(instanceA.Name, "-"):]
-	podIdB := instanceB.Name[strings.LastIndex(instanceB.Name, "-"):]
+	podIdA := podA.Name[strings.LastIndex(podA.Name, "-"):]
+	podIdB := podB.Name[strings.LastIndex(podB.Name, "-"):]
 
-	if len(instanceA.Clients) == len(instanceB.Clients) && podIdA < podIdB {
+	if len(podA.Clients) == len(podB.Clients) && podIdA < podIdB {
 		return true
 	}
 
@@ -220,51 +223,49 @@ func instanceIsLessThen(instanceA *podInstance, instanceB *podInstance) bool {
 func allocateClients(
 	allocationMap map[string]allocationValue,
 	newClients []string,
-	session *telepresencev1alpha1.Session,
-	podInstancesToReutilize map[string]map[string]corev1.Pod,
+	session *sessionv1alpha1.Session,
+	templatePodToReutilizeMap map[string]map[string]corev1.Pod,
 ) {
-	for _, client := range newClients {
-		endpoints := []telepresencev1alpha1.ClientEndpointStatus{}
+	for _, clientId := range newClients {
+		pods := map[string]sessionv1alpha1.PodStatus{}
+		client := podClient{Id: clientId, Connected: true}
 
-		for key, value := range allocationMap {
-			instanceIndex := findFirstPodInstanceAvailable(value.Pod.MaxClients, value.Instances)
-			var podInstanceName string
+		for podTemplateName, allocValue := range allocationMap {
+			podIndex := findFirstPodAvailable(allocValue.PodTemplate.MaxClients, allocValue.Pods)
+			var podName string
 
-			if instanceIndex == -1 {
-				podInstanceName = reutilizePodInstance(podInstancesToReutilize[key])
+			if podIndex == -1 {
+				podName = reutilizePod(templatePodToReutilizeMap[podTemplateName])
 
-				if podInstanceName == "" {
-					podInstanceName = session.Name + "-" + key + "-" + uuid.New().String()[:4]
+				if podName == "" {
+					podName = session.Name + "-" + podTemplateName + "-" + uuid.New().String()[:4]
 				} else {
-					delete(podInstancesToReutilize[key], podInstanceName)
+					delete(templatePodToReutilizeMap[podTemplateName], podName)
 				}
 
-				value.Instances = append(allocationMap[key].Instances,
-					podInstance{Name: podInstanceName, Clients: []string{client}})
+				allocValue.Pods = append(allocValue.Pods, pod{Name: podName, Clients: []podClient{client}})
 			} else {
 				// allocate the client to an existing instance
-				podInstanceName = value.Instances[instanceIndex].Name
-				value.Instances[instanceIndex].Clients = append(value.Instances[instanceIndex].Clients, client)
+				podName = allocValue.Pods[podIndex].Name
+				allocValue.Pods[podIndex].Clients = append(allocValue.Pods[podIndex].Clients, client)
 			}
 
-			allocationMap[key] = value
-			endpoints = append(endpoints, buildEndpoint(podInstanceName, value.Pod.Spec))
+			pods[podName] = buildPodStatus(podName, allocValue.PodTemplate.Template.Spec)
 		}
 
-		session.Status.Clients = append(session.Status.Clients, telepresencev1alpha1.ClientStatus{
-			Client:    client,
-			LastSeen:  defaultTime,
-			Ready:     false,
-			Endpoints: endpoints,
-		})
+		session.Status.Clients[clientId] = sessionv1alpha1.ClientStatus{
+			LastSeenAt: defaultTime,
+			Ready:      false,
+			PodStatus:  pods,
+		}
 	}
 }
 
-func findFirstPodInstanceAvailable(maxClients int, instances []podInstance) int {
+func findFirstPodAvailable(maxClients int, pods []pod) int {
 	result := -1
 
-	for i := 0; i < len(instances); i++ {
-		if len(instances[i].Clients) < maxClients {
+	for i := 0; i < len(pods); i++ {
+		if len(pods[i].Clients) < maxClients {
 			return i
 		}
 	}
@@ -272,58 +273,141 @@ func findFirstPodInstanceAvailable(maxClients int, instances []podInstance) int 
 	return result
 }
 
-func reutilizePodInstance(instances map[string]corev1.Pod) string {
-	for k := range instances {
+func reutilizePod(pods map[string]corev1.Pod) string {
+	for k := range pods {
 		return k
 	}
 
 	return ""
 }
 
-func buildEndpoint(podInstanceName string, podSpec corev1.PodSpec) telepresencev1alpha1.ClientEndpointStatus {
+func buildPodStatus(podName string, podSpec corev1.PodSpec) sessionv1alpha1.PodStatus {
 	paths := []string{}
 
 	for _, container := range podSpec.Containers {
 		for _, port := range container.Ports {
-			paths = append(paths, "/"+podInstanceName+"/"+port.Name)
+			paths = append(paths, "/"+podName+"/"+port.Name)
 		}
 	}
 
-	return telepresencev1alpha1.ClientEndpointStatus{
-		Pod:   podInstanceName,
-		Ready: false,
-		Paths: paths,
+	return sessionv1alpha1.PodStatus{Ready: false, Paths: paths}
+}
+
+func manageGCRegistrations(
+	ctx context.Context,
+	rClient client.Client,
+	session *sessionv1alpha1.Session,
+	allocationMap map[string]allocationValue,
+	templatePodToReutilizeMap map[string]map[string]corev1.Pod,
+	gcRegistrations []gcv1alpha1.GCRegistration,
+) error {
+	logger := log.FromContext(ctx)
+
+	gcRegistrationsMap := make(map[string]*gcv1alpha1.GCRegistration, len(gcRegistrations))
+	for _, gcRegistration := range gcRegistrations {
+		gcRegistrationsMap[gcRegistration.Name] = &gcRegistration
 	}
+
+	for _, podTemplateName := range templatePodToReutilizeMap {
+		for _, pod := range podTemplateName {
+			if _, ok := gcRegistrationsMap[pod.Name]; !ok {
+				if err := createGCRegistration(ctx, rClient, pod.Name, session.Name, session.Namespace); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	for _, allocValue := range allocationMap {
+		for _, pod := range allocValue.Pods {
+			isEmpty := podIsEmpty(&pod)
+
+			if gcRegistration, ok := gcRegistrationsMap[pod.Name]; !ok {
+				if err := createGCRegistration(ctx, rClient, pod.Name, session.Name, session.Namespace); err != nil {
+					return err
+				}
+
+			} else if ok && !isEmpty {
+				if err := rClient.Delete(ctx, gcRegistration); err != nil && !errors.IsNotFound(err) {
+					logger.Error(err, "unable to delete gc registration", "session", session.Name)
+					return err
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func createGCRegistration(
+	ctx context.Context,
+	rClient client.Client,
+	podName string,
+	sessionName string,
+	sessionNamespace string,
+) error {
+	logger := log.FromContext(ctx)
+
+	gcRegistration := &gcv1alpha1.GCRegistration{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      podName,
+			Namespace: gcNamespace,
+		},
+		Spec: gcv1alpha1.GCRegistrationSpec{
+			Session: corev1.ObjectReference{Name: sessionName, Namespace: sessionNamespace},
+			Pod:     corev1.ObjectReference{Name: podName, Namespace: "default"},
+		},
+	}
+
+	if err := rClient.Create(ctx, gcRegistration); err != nil && !errors.IsAlreadyExists(err) {
+		logger.Error(err, "unable to create gc registration", "session", sessionName)
+		return err
+	}
+	return nil
+}
+
+func podIsEmpty(pod *pod) bool {
+	empty := true
+
+	for _, client := range pod.Clients {
+		if client.Connected {
+			empty = false
+			break
+		}
+	}
+
+	return empty
 }
 
 func reconcilePods(
 	allocationMap map[string]allocationValue,
-	clientStatusMap map[string]*telepresencev1alpha1.ClientStatus,
-	podInstancesMap map[string]map[string]corev1.Pod,
-) []telepresencev1alpha1.Pod {
-	podsToSpawn := []telepresencev1alpha1.Pod{}
+	statusClients map[string]sessionv1alpha1.ClientStatus,
+	templatePodMap map[string]map[string]corev1.Pod,
+) []corev1.Pod {
+	podsToSpawn := []corev1.Pod{}
 
-	for _, v := range allocationMap {
-		for _, instance := range v.Instances {
+	for _, allocValue := range allocationMap {
+		for _, pod := range allocValue.Pods {
 
-			if value, ok := podInstancesMap[v.Pod.Name][instance.Name]; !ok {
+			if value, ok := templatePodMap[allocValue.PodTemplate.Name][pod.Name]; !ok {
 				// instance was not found, we have to spawn it
-				setClientStatusReadiness(false, instance.Name, instance.Clients, clientStatusMap)
-				pod := telepresencev1alpha1.Pod{
-					Name:   instance.Name,
-					Labels: map[string]string{"type": "client"},
-					Spec:   v.Pod.Spec,
-				}
+				setClientStatusReadiness(false, pod.Name, pod.Clients, statusClients)
 
-				podsToSpawn = append(podsToSpawn, pod)
+				podsToSpawn = append(podsToSpawn, corev1.Pod{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:   pod.Name,
+						Labels: map[string]string{"type": "client"},
+					},
+					Spec: allocValue.PodTemplate.Template.Spec,
+				})
 			} else {
 				// instance was found, we still have to check its status and report it
 				readyStatus := utils.ExtractReadyConditionStatusFromPod(&value)
 
 				if readyStatus == corev1.ConditionTrue {
-					setClientStatusReadiness(true, instance.Name, instance.Clients, clientStatusMap)
+					setClientStatusReadiness(true, pod.Name, pod.Clients, statusClients)
 				} else {
-					setClientStatusReadiness(false, instance.Name, instance.Clients, clientStatusMap)
+					setClientStatusReadiness(false, pod.Name, pod.Clients, statusClients)
 				}
 			}
 		}
@@ -334,28 +418,29 @@ func reconcilePods(
 
 func setClientStatusReadiness(
 	ready bool,
-	instanceName string,
-	instanceClients []string,
-	clientStatusMap map[string]*telepresencev1alpha1.ClientStatus,
+	podName string,
+	podClients []podClient,
+	statusClients map[string]sessionv1alpha1.ClientStatus,
 ) {
-	for _, client := range instanceClients {
-		if value, ok := clientStatusMap[client]; ok {
+	for _, client := range podClients {
+		if value, ok := statusClients[client.Id]; ok {
 			topReadiness := true
 
-			for i := 0; i < len(value.Endpoints); i++ {
-				if value.Endpoints[i].Pod == instanceName && !ready {
-					value.Endpoints[i].Ready = false
-					topReadiness = false
-					break
+			if podStatus, ok := value.PodStatus[podName]; ok {
+				podStatus.Ready = ready
 
-				} else if value.Endpoints[i].Pod == instanceName {
-					value.Endpoints[i].Ready = ready
-
-				} else if !value.Endpoints[i].Ready {
+				if !ready {
 					topReadiness = false
+
+				} else {
+					for _, v := range value.PodStatus {
+						if !v.Ready {
+							topReadiness = false
+							break
+						}
+					}
 				}
 			}
-
 			value.Ready = topReadiness
 		}
 	}

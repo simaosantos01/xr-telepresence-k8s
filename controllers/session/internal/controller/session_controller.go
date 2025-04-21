@@ -21,9 +21,9 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	telepresencev1alpha1 "mr.telepresence/session/api/v1alpha1"
+	gcv1alpha1 "mr.telepresence/gc/api/v1alpha1"
+	sessionv1alpha1 "mr.telepresence/session/api/v1alpha1"
 	"mr.telepresence/session/internal/controller/utils"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -42,6 +42,7 @@ type SessionReconciler struct {
 // +kubebuilder:rbac:groups=core.mr.telepresence,resources=sessions,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core.mr.telepresence,resources=sessions/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=core.mr.telepresence,resources=sessions/finalizers,verbs=update
+// +kubebuilder:rbac:groups=core.mr.telepresence,resources=gcregistrations,verbs=list;create;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -56,7 +57,7 @@ func (r *SessionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	logger := log.FromContext(ctx)
 	logger.Info("controller triggered", "name", req.Name, "namespace", req.Namespace)
 
-	var session telepresencev1alpha1.Session
+	var session sessionv1alpha1.Session
 	if err := r.Get(ctx, req.NamespacedName, &session); err != nil && errors.IsNotFound(err) {
 		return ctrl.Result{}, nil
 
@@ -65,28 +66,45 @@ func (r *SessionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 
-	statusSnapshot := session.Status.DeepCopy()
+	var gcRegistrations gcv1alpha1.GCRegistrationList
+	opts := client.MatchingFields{utils.GCRegistrationSessionField: session.Name}
 
-	if len(session.Spec.Clients) != 0 && len(session.Spec.SessionServices) > 0 {
+	if err := r.List(ctx, &gcRegistrations, client.InNamespace(gcNamespace), opts); err != nil {
+		logger.Error(err, "unable to get GC registrations", "session", session.Name)
+		return ctrl.Result{}, err
+	}
+
+	if len(session.Spec.Clients) != 0 && len(session.Spec.SessionPodTemplates.Items) > 0 {
 		if err := r.ReconcileSessionPods(ctx, req.Namespace, &session); err != nil {
 			r.Status().Update(ctx, &session)
 			return ctrl.Result{}, err
 		}
 	}
 
-	var clientPodsToSpawn []telepresencev1alpha1.Pod
-	if len(session.Spec.ClientServices) > 0 {
+	var clientPodsToSpawn []corev1.Pod
+	if len(session.Spec.ClientPodTemplates.Items) > 0 {
 		var err error
-		clientPodsToSpawn, err = r.ReconcileClientPods(ctx, req.Namespace, &session)
+		clientPodsToSpawn, err = r.ReconcileClientPods(ctx, req.Namespace, &session, gcRegistrations.Items)
 
 		if err != nil {
 			return ctrl.Result{}, err
 		}
 	}
 
-	if StatusHasChanged(statusSnapshot, &session.Status) {
+	oldStatusHash := session.Annotations["statusHash"]
+	newStatusHash := utils.HashStatus(&session.Status)
+
+	if utils.StatusHasChanged(oldStatusHash, newStatusHash) {
+		utils.SetStatusHashAnnotation(newStatusHash, &session)
+		errStr := "unable to update session resource"
+
+		if err := r.Update(ctx, &session); err != nil {
+			logger.Error(err, errStr, "session", session.Name)
+			return ctrl.Result{}, err
+		}
+
 		if err := r.Status().Update(ctx, &session); err != nil {
-			logger.Error(err, "unable to update session resource")
+			logger.Error(err, errStr, "session", session.Name)
 			return ctrl.Result{}, err
 		}
 	}
@@ -100,114 +118,27 @@ func (r *SessionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	return ctrl.Result{}, nil
 }
 
-func StatusHasChanged(oldStatus *telepresencev1alpha1.SessionStatus, newStatus *telepresencev1alpha1.SessionStatus) bool {
-	if len(oldStatus.Clients) != len(newStatus.Clients) || len(oldStatus.Conditions) != len(newStatus.Conditions) {
-		return true
-	}
-
-	oldConditionsMap := make(map[utils.ConditionType]metav1.ConditionStatus)
-	for _, condition := range oldStatus.Conditions {
-		oldConditionsMap[utils.ConditionType(condition.Type)] = condition.Status
-	}
-
-	for _, condition := range newStatus.Conditions {
-		val, ok := oldConditionsMap[utils.ConditionType(condition.Type)]
-
-		if !ok || val != condition.Status {
-			return true
-		}
-	}
-
-	return true // TODO: always updating the status!
-}
-
-func IndexPodByOwner(obj client.Object) []string {
-	owner := metav1.GetControllerOf(obj)
-
-	if owner == nil {
-		return nil
-	}
-
-	if owner.APIVersion != apiGVStr || owner.Kind != "Session" {
-		return nil
-	}
-
-	return []string{owner.Name}
-}
-
-func IndexPodByType(obj client.Object) []string {
-	pod := obj.(*corev1.Pod)
-
-	podType, ok := pod.Labels["type"]
-	if !ok {
-		return nil
-	}
-
-	return []string{podType}
-}
-
-var (
-	podOwnerField = "ownerField"
-	podTypeField  = "podTypeField"
-	apiGVStr      = telepresencev1alpha1.GroupVersion.String()
+const (
+	gcNamespace = "mr.telepresence.gc" // Namespace that holds the GC Registrations
 )
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *SessionReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.Pod{}, podOwnerField,
-		func(o client.Object) []string {
 
-			return IndexPodByOwner(o)
-		}); err != nil {
-		return err
-	}
-
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.Pod{}, podTypeField,
-		func(o client.Object) []string {
-
-			return IndexPodByType(o)
-		}); err != nil {
+	if err := utils.SetupManagerFieldIndexer(context.Background(), mgr); err != nil {
 		return err
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&telepresencev1alpha1.Session{}, builder.WithPredicates(predicate.Funcs{
+		For(&sessionv1alpha1.Session{}, builder.WithPredicates(predicate.Funcs{
 			CreateFunc: func(e event.CreateEvent) bool { return true },
 			DeleteFunc: func(e event.DeleteEvent) bool { return false },
-			UpdateFunc: func(e event.UpdateEvent) bool {
-				oldObj := e.ObjectOld.(*telepresencev1alpha1.Session)
-				newObj := e.ObjectNew.(*telepresencev1alpha1.Session)
-
-				if len(oldObj.Spec.Clients) != len(newObj.Spec.Clients) {
-					return true
-				}
-
-				clientMap := make(map[string]bool, len(oldObj.Spec.Clients))
-				for _, client := range oldObj.Spec.Clients {
-					clientMap[client.Id] = client.Connected
-				}
-
-				for _, client := range newObj.Spec.Clients {
-					value, ok := clientMap[client.Id]
-
-					if !ok || value != client.Connected {
-						return true
-					}
-				}
-
-				return false
-			},
+			UpdateFunc: func(e event.UpdateEvent) bool { return utils.SessionUpdateFunc(e) },
 		})).
 		Owns(&corev1.Pod{}, builder.WithPredicates(predicate.Funcs{
 			CreateFunc: func(e event.CreateEvent) bool { return false },
 			DeleteFunc: func(e event.DeleteEvent) bool { return true },
-			UpdateFunc: func(e event.UpdateEvent) bool {
-				oldObj := e.ObjectOld.(*corev1.Pod)
-				newObj := e.ObjectNew.(*corev1.Pod)
-
-				return utils.ExtractReadyConditionStatusFromPod(oldObj) !=
-					utils.ExtractReadyConditionStatusFromPod(newObj)
-			},
+			UpdateFunc: func(e event.UpdateEvent) bool { return utils.PodUpdateFunc(e) },
 		})).
 		Named("session").
 		Complete(r)

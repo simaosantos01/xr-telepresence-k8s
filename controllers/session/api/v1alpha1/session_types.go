@@ -23,49 +23,47 @@ import (
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
-type ClientPod struct {
-	Pod        `json:",inline"`
-	MaxClients int `json:"maxClients"`
-}
-
-type Pod struct {
-	Name   string            `json:"name"`
-	Labels map[string]string `json:"labels"`
-	Spec   corev1.PodSpec    `json:"spec"`
-}
-
-type Client struct {
-	Id        string `json:"id"`
-	Connected bool   `json:"connected"`
-}
-
 // SessionSpec defines the desired state of Session.
-type SessionSpec struct {
-	SessionServices         []Pod       `json:"sessionServices"`
-	ClientServices          []ClientPod `json:"clientServices"`
-	TimeoutSeconds          int         `json:"timeoutSeconds"`
-	ReutilizeTimeoutSeconds int         `json:"reutilizeTimeoutSeconds"`
-	Clients                 []Client    `json:"clients"`
+
+type ClientPodTemplateList struct {
+	metav1.TypeMeta `json:",inline"`
+	// Standard list metadata.
+	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+	// +optional
+	metav1.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
+
+	// List of pod templates
+	Items []ClientPodTemplate `json:"items" protobuf:"bytes,2,rep,name=items"`
 }
 
-type ClientEndpointStatus struct {
-	Pod   string   `json:"pod"`
+type ClientPodTemplate struct {
+	MaxClients         int `json:"maxClients"`
+	corev1.PodTemplate `json:",inline"`
+}
+
+type SessionSpec struct {
+	SessionPodTemplates     corev1.PodTemplateList `json:"sessionPodTemplates"`
+	ClientPodTemplates      ClientPodTemplateList  `json:"clientPodTemplates"`
+	TimeoutSeconds          int                    `json:"timeoutSeconds"`
+	ReutilizeTimeoutSeconds int                    `json:"reutilizeTimeoutSeconds"`
+	Clients                 map[string]bool        `json:"clients"`
+}
+
+type PodStatus struct {
 	Paths []string `json:"paths"`
 	Ready bool     `json:"ready"`
 }
 
 type ClientStatus struct {
-	Client    string                 `json:"client"`
-	LastSeen  metav1.Time            `json:"lastSeen"`
-	Ready     bool                   `json:"ready"`
-	Endpoints []ClientEndpointStatus `json:"endpoints"`
+	LastSeenAt metav1.Time          `json:"lastSeenAt"`
+	Ready      bool                 `json:"ready"`
+	PodStatus  map[string]PodStatus `json:"podStatus"`
 }
 
 // SessionStatus defines the observed state of Session.
 type SessionStatus struct {
-	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
-	Clients    []ClientStatus     `json:"clients,omitempty"`
+	Conditions []metav1.Condition      `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
+	Clients    map[string]ClientStatus `json:"clients,omitempty"`
 }
 
 // +kubebuilder:object:root=true

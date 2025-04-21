@@ -7,6 +7,14 @@ rules:
 - apiGroups:
   - core.mr.telepresence
   resources:
+  - gcregistrations
+  verbs:
+  - create
+  - delete
+  - list
+- apiGroups:
+  - core.mr.telepresence
+  resources:
   - sessions
   verbs:
   - create

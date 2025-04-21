@@ -5,7 +5,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	telepresencev1alpha1 "mr.telepresence/session/api/v1alpha1"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -39,25 +38,22 @@ func SpawnPod(
 	rClient client.Client,
 	scheme *runtime.Scheme,
 	session *telepresencev1alpha1.Session,
-	pod *telepresencev1alpha1.Pod,
+	pod *corev1.Pod,
 ) error {
-
 	logger := log.FromContext(ctx)
 
 	pod.Labels["telepresence"] = "true"
 	pod.Labels["svc"] = pod.Name
-
-	corev1Pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: pod.Name, Labels: pod.Labels, Namespace: "default"},
-		Spec: pod.Spec}
+	pod.Namespace = "default"
 
 	// set controller reference for garbage collection
-	if err := ctrl.SetControllerReference(session, corev1Pod, scheme); err != nil {
-		logger.Error(err, "unable to set controller reference for pod", "session", session.Name, "pod", corev1Pod.Name)
+	if err := ctrl.SetControllerReference(session, pod, scheme); err != nil {
+		logger.Error(err, "unable to set controller reference for pod", "session", session.Name, "pod", pod.Name)
 		return err
 	}
 
-	if err := rClient.Create(ctx, corev1Pod); err != nil && !errors.IsAlreadyExists(err) {
-		logger.Error(err, "unable to create pod", "session", session.Name, "pod", corev1Pod.Name)
+	if err := rClient.Create(ctx, pod); err != nil && !errors.IsAlreadyExists(err) {
+		logger.Error(err, "unable to create pod", "session", session.Name, "pod", pod.Name)
 		return err
 	}
 

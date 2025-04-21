@@ -21,7 +21,7 @@ func (r *SessionReconciler) ReconcileSessionPods(
 	logger := log.FromContext(ctx)
 
 	var sessionPods corev1.PodList
-	fieldSelector := client.MatchingFields{podOwnerField: session.Name, podTypeField: "session"}
+	fieldSelector := client.MatchingFields{utils.PodOwnerField: session.Name, utils.PodTypeField: "session"}
 
 	if err := r.List(ctx, &sessionPods, client.InNamespace(namespace), fieldSelector); err != nil {
 		utils.SetReadyCondition(session, metav1.ConditionUnknown, utils.GET_PODS_FAILED_REASON,
@@ -31,7 +31,7 @@ func (r *SessionReconciler) ReconcileSessionPods(
 		return err
 	}
 
-	if len(session.Spec.SessionServices) == len(sessionPods.Items) {
+	if len(session.Spec.SessionPodTemplates.Items) == len(sessionPods.Items) {
 		ready := utils.PodsAreReady(&sessionPods)
 
 		if ready {
@@ -42,7 +42,7 @@ func (r *SessionReconciler) ReconcileSessionPods(
 		}
 	} else {
 		if err := restorePods(ctx, r.Client, r.Scheme, session, sessionPods.Items,
-			session.Spec.SessionServices); err != nil {
+			session.Spec.SessionPodTemplates.Items); err != nil {
 
 			utils.SetReadyCondition(session, metav1.ConditionFalse, utils.PODS_NOT_READY_REASON,
 				utils.PODS_NOT_READY_MESSAGE)
@@ -62,7 +62,7 @@ func restorePods(
 	scheme *runtime.Scheme,
 	session *telepresencev1alpha1.Session,
 	foundPods []corev1.Pod,
-	requiredPods []telepresencev1alpha1.Pod,
+	podTemplates []corev1.PodTemplate,
 ) error {
 	foundPodsMap := make(map[string]struct{}, len(foundPods))
 
@@ -70,13 +70,19 @@ func restorePods(
 		foundPodsMap[pod.Name] = struct{}{}
 	}
 
-	for _, pod := range requiredPods {
-		key := session.Name + "-" + pod.Name
+	for _, template := range podTemplates {
+		key := session.Name + "-" + template.Name
 
 		if _, exists := foundPodsMap[key]; !exists {
-			pod.Name = session.Name + "-" + pod.Name
-			pod.Labels["type"] = "session"
-			if err := utils.SpawnPod(ctx, rClient, scheme, session, &pod); err != nil {
+			pod := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   key,
+					Labels: map[string]string{"type": "session"},
+				},
+				Spec: template.Template.Spec,
+			}
+
+			if err := utils.SpawnPod(ctx, rClient, scheme, session, pod); err != nil {
 				return err
 			}
 		}

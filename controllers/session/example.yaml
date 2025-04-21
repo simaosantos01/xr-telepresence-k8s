@@ -1,0 +1,38 @@
+apiVersion: core.mr.telepresence/v1alpha1
+kind: Session
+metadata:
+  labels:
+    app.kubernetes.io/name: telepresencekubctrl
+    app.kubernetes.io/managed-by: kustomize
+  name: session-1
+spec:
+  sessionPodTemplates:
+    items:
+      - template:
+          spec:
+            containers:
+              - name: nginx
+                image: nginx:latest
+                ports:
+                  - containerPort: 80
+                    name: hello
+        metadata:
+          name: "asdas"
+  clientPodTemplates:
+    items: []
+    # - name: test
+    #   maxClients: 2
+    #   labels: {}
+    #   spec:
+    #     containers:
+    #       - name: nginx
+    #         image: nginx:latest
+    #         ports:
+    #           - containerPort: 80
+    #             name: hello
+  clients:
+    client1: false
+    client2: false
+    client3: false
+  timeoutSeconds: 60
+  reutilizeTimeoutSeconds: 120
