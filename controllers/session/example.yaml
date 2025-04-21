@@ -8,7 +8,24 @@ metadata:
 spec:
   sessionPodTemplates:
     items:
-      - template:
+      []
+      # - template:
+      #     spec:
+      #       containers:
+      #         - name: nginx
+      #           image: nginx:latest
+      #           ports:
+      #             - containerPort: 80
+      #               name: hello
+      #   metadata:
+      #     name: "asdas"
+  clientPodTemplates:
+    items:
+      - metadata:
+          name: test
+          labels: {}
+        maxClients: 2
+        template:
           spec:
             containers:
               - name: nginx
@@ -16,23 +33,10 @@ spec:
                 ports:
                   - containerPort: 80
                     name: hello
-        metadata:
-          name: "asdas"
-  clientPodTemplates:
-    items: []
-    # - name: test
-    #   maxClients: 2
-    #   labels: {}
-    #   spec:
-    #     containers:
-    #       - name: nginx
-    #         image: nginx:latest
-    #         ports:
-    #           - containerPort: 80
-    #             name: hello
   clients:
-    client1: false
-    client2: false
+    client1: true
+    client2: true
     client3: false
+    client4: false
   timeoutSeconds: 60
   reutilizeTimeoutSeconds: 120

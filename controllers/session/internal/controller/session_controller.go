@@ -95,15 +95,15 @@ func (r *SessionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	newStatusHash := utils.HashStatus(&session.Status)
 
 	if utils.StatusHasChanged(oldStatusHash, newStatusHash) {
-		utils.SetStatusHashAnnotation(newStatusHash, &session)
 		errStr := "unable to update session resource"
 
-		if err := r.Update(ctx, &session); err != nil {
+		if err := r.Status().Update(ctx, &session); err != nil {
 			logger.Error(err, errStr, "session", session.Name)
 			return ctrl.Result{}, err
 		}
 
-		if err := r.Status().Update(ctx, &session); err != nil {
+		utils.SetStatusHashAnnotation(newStatusHash, &session)
+		if err := r.Update(ctx, &session); err != nil {
 			logger.Error(err, errStr, "session", session.Name)
 			return ctrl.Result{}, err
 		}
@@ -119,7 +119,7 @@ func (r *SessionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 }
 
 const (
-	gcNamespace = "mr.telepresence.gc" // Namespace that holds the GC Registrations
+	gcNamespace = "mr-telepresence-gc" // Namespace that holds the GC Registrations
 )
 
 // SetupWithManager sets up the controller with the Manager.

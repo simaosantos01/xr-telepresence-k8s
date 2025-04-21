@@ -55,6 +55,10 @@ func (r *SessionReconciler) ReconcileClientPods(
 		return nil, err
 	}
 
+	if session.Status.Clients == nil {
+		session.Status.Clients = make(map[string]sessionv1alpha1.ClientStatus)
+	}
+
 	// Remove clients from the status if their reconnection grace period has expired
 	cleanExpiredClientsFromStatus(now, session.Status.Clients, session.Spec.TimeoutSeconds)
 
@@ -128,12 +132,14 @@ func handleClientChanges(
 		if ok && !connected && match.LastSeenAt.Time.Unix() == defaultTime.Time.Unix() {
 			// client lost connection
 			match.LastSeenAt = now
+			statusClients[specClient] = match
 		} else if !ok && connected {
 			// new client found
 			newClients = append(newClients, specClient)
 		} else if connected {
 			// client may have reconected
 			match.LastSeenAt = defaultTime
+			statusClients[specClient] = match
 		}
 	}
 
@@ -194,6 +200,7 @@ func buildAllocationMap(
 
 		allocValue := allocationMap[podTemplateName]
 		allocValue.Pods = pods
+		allocationMap[podTemplateName] = allocValue
 	}
 }
 
@@ -250,6 +257,7 @@ func allocateClients(
 				allocValue.Pods[podIndex].Clients = append(allocValue.Pods[podIndex].Clients, client)
 			}
 
+			allocationMap[podTemplateName] = allocValue
 			pods[podName] = buildPodStatus(podName, allocValue.PodTemplate.Template.Spec)
 		}
 
@@ -322,7 +330,7 @@ func manageGCRegistrations(
 		for _, pod := range allocValue.Pods {
 			isEmpty := podIsEmpty(&pod)
 
-			if gcRegistration, ok := gcRegistrationsMap[pod.Name]; !ok {
+			if gcRegistration, ok := gcRegistrationsMap[pod.Name]; !ok && isEmpty {
 				if err := createGCRegistration(ctx, rClient, pod.Name, session.Name, session.Namespace); err != nil {
 					return err
 				}
@@ -347,6 +355,17 @@ func createGCRegistration(
 	sessionNamespace string,
 ) error {
 	logger := log.FromContext(ctx)
+
+	namespace := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: gcNamespace,
+		},
+	}
+
+	if err := rClient.Create(ctx, namespace); err != nil && !errors.IsAlreadyExists(err) {
+		logger.Error(err, "unable to create gc namespace", "session", sessionName)
+		return err
+	}
 
 	gcRegistration := &gcv1alpha1.GCRegistration{
 		ObjectMeta: metav1.ObjectMeta{
@@ -428,6 +447,7 @@ func setClientStatusReadiness(
 
 			if podStatus, ok := value.PodStatus[podName]; ok {
 				podStatus.Ready = ready
+				value.PodStatus[podName] = podStatus
 
 				if !ready {
 					topReadiness = false
@@ -442,6 +462,7 @@ func setClientStatusReadiness(
 				}
 			}
 			value.Ready = topReadiness
+			statusClients[client.Id] = value
 		}
 	}
 }

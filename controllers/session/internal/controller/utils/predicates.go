@@ -16,7 +16,9 @@ func SessionUpdateFunc(e event.UpdateEvent) bool {
 
 	for specClient, connected := range newObj.Spec.Clients {
 		if v, ok := oldObj.Spec.Clients[specClient]; ok {
-			return v != connected
+			if v != connected {
+				return true
+			}
 		} else {
 			return true
 		}

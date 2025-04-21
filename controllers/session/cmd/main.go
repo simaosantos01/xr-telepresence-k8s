@@ -37,6 +37,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
+	gcv1alpha1 "mr.telepresence/gc/api/v1alpha1"
 	corev1alpha1 "mr.telepresence/session/api/v1alpha1"
 	"mr.telepresence/session/internal/controller"
 	// +kubebuilder:scaffold:imports
@@ -50,6 +51,7 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(corev1alpha1.AddToScheme(scheme))
+	utilruntime.Must(gcv1alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
