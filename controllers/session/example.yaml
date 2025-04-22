@@ -24,7 +24,7 @@ spec:
       - metadata:
           name: test
           labels: {}
-        maxClients: 2
+        maxClients: 3
         template:
           spec:
             containers:
@@ -36,7 +36,7 @@ spec:
   clients:
     client1: true
     client2: true
-    client3: false
-    client4: false
+    client3: true
+    client4: true
   timeoutSeconds: 60
   reutilizeTimeoutSeconds: 120

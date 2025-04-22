@@ -72,7 +72,7 @@ func (r *SessionReconciler) ReconcileClientPods(
 	templatePodToReutilizeMap := templatePodMapping(clientPods.Items)
 
 	for clientId, clientStatus := range session.Status.Clients {
-		if _, ok := session.Status.Clients[clientId]; !ok {
+		if _, ok := session.Spec.Clients[clientId]; !ok {
 			// client left the session (exists in status but not in spec)
 			delete(session.Status.Clients, clientId)
 		} else {
