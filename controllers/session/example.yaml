@@ -34,9 +34,9 @@ spec:
                   - containerPort: 80
                     name: hello
   clients:
-    client1: true
-    client2: true
-    client3: true
-    client4: true
+    client1: false
+    client2: false
+    client3: false
+    client4: false
   timeoutSeconds: 60
   reutilizeTimeoutSeconds: 120

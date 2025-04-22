@@ -90,10 +90,10 @@ func (r *SessionReconciler) ReconcileClientPods(
 	}
 
 	// creates and deletes gc registrations for pods to be handled by the gc controller
+	templatePodMap := templatePodMapping(clientPods.Items)
 	manageGCRegistrations(ctx, r.Client, session, allocationMap, templatePodToReutilizeMap, gcRegistrations)
 
 	// reconcile workload
-	templatePodMap := templatePodMapping(clientPods.Items)
 	podsToSpawn := reconcilePods(allocationMap, session.Status.Clients, templatePodMap)
 	return podsToSpawn, nil
 }
@@ -374,7 +374,7 @@ func createGCRegistration(
 		},
 		Spec: gcv1alpha1.GCRegistrationSpec{
 			Session: corev1.ObjectReference{Name: sessionName, Namespace: sessionNamespace},
-			Pod:     corev1.ObjectReference{Name: podName, Namespace: "default"},
+			Type:    gcv1alpha1.Timeout,
 		},
 	}
 
