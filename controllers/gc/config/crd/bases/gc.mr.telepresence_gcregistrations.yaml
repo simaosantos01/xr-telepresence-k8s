@@ -39,10 +39,7 @@ spec:
           spec:
             description: GCRegistrationSpec defines the desired state of GCRegistration.
             properties:
-              deleteAt:
-                format: date-time
-                type: string
-              regarding:
+              session:
                 description: ObjectReference contains enough information to let you
                   inspect or modify the referred object.
                 properties:
@@ -86,9 +83,11 @@ spec:
                     type: string
                 type: object
                 x-kubernetes-map-type: atomic
+              type:
+                type: string
             required:
-            - deleteAt
-            - regarding
+            - session
+            - type
             type: object
         type: object
     served: true

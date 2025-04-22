@@ -24,10 +24,17 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
+type RegistrationType string
+
+const (
+	Timeout          RegistrationType = "Timeout"
+	ReutilizeTimeout RegistrationType = "ReutilizeTimeout"
+)
+
 // GCRegistrationSpec defines the desired state of GCRegistration.
 type GCRegistrationSpec struct {
-	Regarding corev1.ObjectReference `json:"regarding"`
-	DeleteAt  metav1.Time            `json:"deleteAt"`
+	Session corev1.ObjectReference `json:"session"`
+	Type    RegistrationType       `json:"type"`
 }
 
 // +kubebuilder:object:root=true
