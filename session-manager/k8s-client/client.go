@@ -1,10 +1,10 @@
-package k8sclient
+package k8sClient
 
 import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 
-	telepresencev1 "mr.telepresence/controller/api/v1"
+	sessionv1alpha1 "mr.telepresence/session/api/v1alpha1"
 )
 
 type SessionClient struct {
@@ -12,7 +12,7 @@ type SessionClient struct {
 }
 
 func NewForConfig(c *rest.Config) (*SessionClient, error) {
-	c.ContentConfig.GroupVersion = &telepresencev1.GroupVersion
+	c.ContentConfig.GroupVersion = &sessionv1alpha1.GroupVersion
 	c.APIPath = "/apis"
 	c.NegotiatedSerializer = scheme.Codecs.WithoutConversion()
 	c.UserAgent = rest.DefaultKubernetesUserAgent()

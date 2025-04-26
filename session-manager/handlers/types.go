@@ -1,7 +1,8 @@
 package handlers
 
 type RegisterSessionBody struct {
-	Name string `json:"name" binding:"required"`
+	TemplateName       string `json:"templateName" binding:"required"`
+	SessionPodsCluster string `json:"sessionPodsCluster" binding:"required"`
 }
 
 type PatchClientsBody struct {

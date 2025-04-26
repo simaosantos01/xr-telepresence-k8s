@@ -1,9 +1,9 @@
-package k8sclient
+package k8sClient
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	telepresencev1 "mr.telepresence/controller/api/v1"
+	sessionv1alpha1 "mr.telepresence/session/api/v1alpha1"
 )
 
 var (
@@ -12,8 +12,8 @@ var (
 )
 
 func addKnownTypes(scheme *runtime.Scheme) error {
-	scheme.AddKnownTypes(telepresencev1.GroupVersion, &telepresencev1.Session{}, &telepresencev1.SessionList{})
+	scheme.AddKnownTypes(sessionv1alpha1.GroupVersion, &sessionv1alpha1.Session{}, &sessionv1alpha1.SessionList{})
 
-	metav1.AddToGroupVersion(scheme, telepresencev1.GroupVersion)
+	metav1.AddToGroupVersion(scheme, sessionv1alpha1.GroupVersion)
 	return nil
 }
