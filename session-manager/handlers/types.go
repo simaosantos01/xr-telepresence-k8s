@@ -5,7 +5,11 @@ type RegisterSessionBody struct {
 	SessionPodsCluster string `json:"sessionPodsCluster" binding:"required"`
 }
 
-type PatchClientsBody struct {
-	SessionName string `json:"sessionName" binding:"required"`
-	ClientName  string `json:"clientName" binding:"required"`
+type CreateClientBody struct {
+	ClientId string `json:"clientId" binding:"required"`
+	Cluster  string `json:"cluster" binding:"required"`
+}
+
+type UpdateClientBody struct {
+	Connected *bool `json:"connected" binding:"required"`
 }

@@ -20,8 +20,11 @@ func main() {
 		v1.GET("/session", handler.GetSession)
 		v1.DELETE("/session", handler.DeleteSession)
 
-		// v1.PATCH("/client/connect", handler.ConnectClient)
-		// v1.PATCH("/client/disconnect", handler.DisconnectClient)
+		v1.POST("/session/:sessionId/client", handler.CreateClient)
+		v1.GET("/session/:sessionId/client", handler.GetClients)
+		v1.GET("/session/:sessionId/client/:clientId", handler.GetClient)
+		v1.PATCH("/session/:sessionId/client/:clientId", handler.UpdateClient)
+		v1.DELETE("session/:sessionId/client/:clientId", handler.DeleteClient)
 	}
 
 	router.Run(":8080")

@@ -15,8 +15,8 @@ import (
 )
 
 type Handler struct {
-	clusterSessionClientMap map[string]*k8sClient.SessionClient
-	sessionTemplates        map[string]*SessionTemplate
+	clusterClientMap map[string]*k8sClient.SessionClient
+	sessionTemplates map[string]*SessionTemplate
 }
 
 // Reference:
@@ -54,7 +54,7 @@ func ConfigHandler() (*Handler, error) {
 		return nil, err
 	}
 
-	return &Handler{clusterSessionClientMap: clusterSessionClientMap, sessionTemplates: templates}, nil
+	return &Handler{clusterClientMap: clusterSessionClientMap, sessionTemplates: templates}, nil
 }
 
 func buildConfigWithContext(context string, kubeconfigPath string) (*rest.Config, error) {

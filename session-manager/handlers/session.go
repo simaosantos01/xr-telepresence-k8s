@@ -42,7 +42,7 @@ func (h *Handler) CreateSession(ctx *gin.Context) {
 	}
 
 	if len(session.Spec.SessionPodTemplates.Items) != 0 {
-		sessionClient, ok := h.clusterSessionClientMap[body.SessionPodsCluster]
+		sessionClient, ok := h.clusterClientMap[body.SessionPodsCluster]
 		if !ok {
 			message := "cluster not configured"
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": message})
@@ -57,7 +57,7 @@ func (h *Handler) CreateSession(ctx *gin.Context) {
 
 	session.Spec.SessionPodTemplates = corev1.PodTemplateList{Items: []corev1.PodTemplate{}}
 
-	for _, sessionClient := range h.clusterSessionClientMap {
+	for _, sessionClient := range h.clusterClientMap {
 		if _, err := sessionClient.Sessions("default").Create(session, ctx); err != nil && !errors.IsAlreadyExists(err) {
 			ctx.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 			return
@@ -77,7 +77,7 @@ func (h *Handler) GetSession(ctx *gin.Context) {
 
 	sessionSum := &sessionv1alpha1.Session{ObjectMeta: metav1.ObjectMeta{Name: name}}
 
-	for _, sessionClient := range h.clusterSessionClientMap {
+	for _, sessionClient := range h.clusterClientMap {
 		session, err := sessionClient.Sessions("default").Get(name, metav1.GetOptions{}, ctx)
 		if err != nil {
 			ctx.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
@@ -108,7 +108,7 @@ func (h *Handler) GetSession(ctx *gin.Context) {
 func (h *Handler) GetSessions(ctx *gin.Context) {
 	sessionsLocation := []map[string]string{}
 
-	for _, sessionClient := range h.clusterSessionClientMap {
+	for _, sessionClient := range h.clusterClientMap {
 		sessions, err := sessionClient.Sessions("default").List(metav1.ListOptions{}, ctx)
 		if err != nil {
 			ctx.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
@@ -136,7 +136,7 @@ func (h *Handler) DeleteSession(ctx *gin.Context) {
 	}
 
 	deleted := false
-	for _, sessionClient := range h.clusterSessionClientMap {
+	for _, sessionClient := range h.clusterClientMap {
 		if err := sessionClient.Sessions("default").Delete(name, metav1.DeleteOptions{}, ctx); err != nil &&
 			!errors.IsNotFound(err) {
 

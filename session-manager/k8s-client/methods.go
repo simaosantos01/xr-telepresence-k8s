@@ -15,7 +15,7 @@ type SessionInterface interface {
 	List(opts metav1.ListOptions, ctx context.Context) (*sessionv1alpha1.SessionList, error)
 	Get(name string, opts metav1.GetOptions, ctx context.Context) (*sessionv1alpha1.Session, error)
 	Create(session *sessionv1alpha1.Session, ctx context.Context) (*sessionv1alpha1.Session, error)
-	PatchClients(sessionName string, opts metav1.PatchOptions, session *sessionv1alpha1.Session, ctx context.Context) (*sessionv1alpha1.Session, error)
+	PatchClients(ctx context.Context, sessionName string, session *sessionv1alpha1.Session, patchData []byte, opts metav1.PatchOptions) (*sessionv1alpha1.Session, error)
 	Delete(name string, opts metav1.DeleteOptions, ctx context.Context) error
 }
 
@@ -64,19 +64,29 @@ func (c *sessionClient) Create(session *sessionv1alpha1.Session, ctx context.Con
 	return &result, err
 }
 
-func (c *sessionClient) PatchClients(sessionName string, opts metav1.PatchOptions, session *sessionv1alpha1.Session, ctx context.Context) (*sessionv1alpha1.Session, error) {
-	patchData, err := json.Marshal(map[string]interface{}{
-		"spec": map[string]interface{}{
-			"clients": session.Spec.Clients,
-		},
-	})
+func (c *sessionClient) PatchClients(
+	ctx context.Context,
+	sessionName string,
+	session *sessionv1alpha1.Session,
+	patchData []byte,
+	opts metav1.PatchOptions,
+) (*sessionv1alpha1.Session, error) {
 
-	if err != nil {
-		return nil, err
+	if patchData == nil {
+		var err error
+		patchData, err = json.Marshal(map[string]interface{}{
+			"spec": map[string]interface{}{
+				"clients": session.Spec.Clients,
+			},
+		})
+
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	result := sessionv1alpha1.Session{}
-	err = c.restClient.
+	err := c.restClient.
 		Patch(types.MergePatchType).
 		Namespace(c.namespace).
 		Resource("sessions").
