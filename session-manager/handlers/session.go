@@ -3,12 +3,14 @@ package handlers
 import (
 	"net/http"
 
+	stdErrors "errors"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	corev1 "k8s.io/api/core/v1"
+	k8sClient "mr.telepresence/session-manager/k8s-client"
 	sessionv1alpha1 "mr.telepresence/session/api/v1alpha1"
 )
 
@@ -69,19 +71,41 @@ func (h *Handler) CreateSession(ctx *gin.Context) {
 }
 
 func (h *Handler) GetSession(ctx *gin.Context) {
-	name, ok := ctx.GetQuery("id")
-	if !ok {
-		h.GetSessions(ctx)
-		return
+	sessionId := ctx.Param("sessionId")
+	session, err := findSession(ctx, sessionId, h.clusterClientMap)
+	if err != nil && errorIsSessionNotFound(err) {
+		ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+	} else if err != nil {
+		ctx.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 	}
 
-	sessionSum := &sessionv1alpha1.Session{ObjectMeta: metav1.ObjectMeta{Name: name}}
+	ctx.JSON(http.StatusOK, session)
+}
 
-	for _, sessionClient := range h.clusterClientMap {
-		session, err := sessionClient.Sessions("default").Get(name, metav1.GetOptions{}, ctx)
-		if err != nil {
-			ctx.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
-			return
+func findSession(
+	ctx *gin.Context,
+	sessionId string,
+	clusterClientMap map[string]*k8sClient.SessionClient,
+) (*sessionv1alpha1.Session, error) {
+
+	sessionSum := &sessionv1alpha1.Session{
+		ObjectMeta: metav1.ObjectMeta{Name: sessionId},
+		Spec: sessionv1alpha1.SessionSpec{
+			Clients: make(map[string]bool),
+		},
+		Status: sessionv1alpha1.SessionStatus{
+			Conditions: []metav1.Condition{},
+			Clients:    make(map[string]sessionv1alpha1.ClientStatus),
+		},
+	}
+
+	for _, cluterClient := range clusterClientMap {
+		session, err := cluterClient.Sessions("default").Get(ctx, sessionId, metav1.GetOptions{})
+		if err != nil && errors.IsNotFound(err) {
+			return nil, stdErrors.New("session not found")
+
+		} else if err != nil {
+			return nil, err
 		}
 
 		if len(session.Spec.SessionPodTemplates.Items) != 0 {
@@ -102,7 +126,7 @@ func (h *Handler) GetSession(ctx *gin.Context) {
 		}
 	}
 
-	ctx.JSON(http.StatusOK, sessionSum)
+	return sessionSum, nil
 }
 
 func (h *Handler) GetSessions(ctx *gin.Context) {

@@ -21,16 +21,17 @@ func (h *Handler) CreateClient(ctx *gin.Context) {
 		return
 	}
 
-	if _, ok := h.clusterClientMap[body.Cluster]; !ok {
+	clusterClient, ok := h.clusterClientMap[body.Cluster]
+	if !ok {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "cluster not configured"})
 		return
 	}
 
 	// Find session
 	sessionId := ctx.Param("sessionId")
-	clusterClient, session, err := findSession(ctx, h.clusterClientMap, sessionId)
+	session, err := clusterClient.Sessions("default").Get(ctx, sessionId, metav1.GetOptions{})
 
-	if err != nil && errorIsSessionNotFound(err) {
+	if err != nil && errors.IsNotFound(err) {
 		ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 
@@ -50,20 +51,23 @@ func (h *Handler) CreateClient(ctx *gin.Context) {
 	patchSession(ctx, session, clusterClient, nil)
 }
 
-func findSession(
+func findSessionByClientId(
 	ctx *gin.Context,
 	clusterClientMap map[string]*k8sClient.SessionClient,
 	sessionId string,
+	clientId string,
 ) (*k8sClient.SessionClient, *sessionv1alpha1.Session, error) {
 
 	for _, client := range clusterClientMap {
-		session, err := client.Sessions("default").Get(sessionId, metav1.GetOptions{}, ctx)
+		session, err := client.Sessions("default").Get(ctx, sessionId, metav1.GetOptions{})
 
 		if err != nil && !errors.IsNotFound(err) {
 			return nil, nil, err
 
 		} else if err == nil {
-			return client, session, nil
+			if _, ok := session.Spec.Clients[clientId]; ok {
+				return client, session, nil
+			}
 		}
 	}
 
@@ -91,7 +95,8 @@ func patchSession(ctx *gin.Context, session *sessionv1alpha1.Session, clusterCli
 func (h *Handler) GetClient(ctx *gin.Context) {
 	// Find session
 	sessionId := ctx.Param("sessionId")
-	_, session, err := findSession(ctx, h.clusterClientMap, sessionId)
+	clientId := ctx.Param("clientId")
+	_, session, err := findSessionByClientId(ctx, h.clusterClientMap, sessionId, clientId)
 
 	if err != nil && errorIsSessionNotFound(err) {
 		ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
@@ -99,13 +104,6 @@ func (h *Handler) GetClient(ctx *gin.Context) {
 
 	} else if err != nil {
 		ctx.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Check if client exists
-	clientId := ctx.Param("clientId")
-	if _, ok := session.Spec.Clients[clientId]; !ok {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": "client does not exist"})
 		return
 	}
 
@@ -120,7 +118,7 @@ func (h *Handler) GetClients(ctx *gin.Context) {
 
 	// Find session
 	sessionId := ctx.Param("sessionId")
-	_, session, err := findSession(ctx, h.clusterClientMap, sessionId)
+	session, err := findSession(ctx, sessionId, h.clusterClientMap)
 
 	if err != nil && errorIsSessionNotFound(err) {
 		ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
@@ -151,7 +149,8 @@ func (h *Handler) UpdateClient(ctx *gin.Context) {
 
 	// Find session
 	sessionId := ctx.Param("sessionId")
-	clusterClient, session, err := findSession(ctx, h.clusterClientMap, sessionId)
+	clientId := ctx.Param("clientId")
+	clusterClient, session, err := findSessionByClientId(ctx, h.clusterClientMap, sessionId, clientId)
 
 	if err != nil && errorIsSessionNotFound(err) {
 		ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
@@ -159,13 +158,6 @@ func (h *Handler) UpdateClient(ctx *gin.Context) {
 
 	} else if err != nil {
 		ctx.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Check if client exists
-	clientId := ctx.Param("clientId")
-	if _, ok := session.Spec.Clients[clientId]; !ok {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": "client does not exist"})
 		return
 	}
 
@@ -177,7 +169,8 @@ func (h *Handler) UpdateClient(ctx *gin.Context) {
 func (h *Handler) DeleteClient(ctx *gin.Context) {
 	// Find session
 	sessionId := ctx.Param("sessionId")
-	clusterClient, session, err := findSession(ctx, h.clusterClientMap, sessionId)
+	clientId := ctx.Param("clientId")
+	clusterClient, session, err := findSessionByClientId(ctx, h.clusterClientMap, sessionId, clientId)
 
 	if err != nil && errorIsSessionNotFound(err) {
 		ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
@@ -185,13 +178,6 @@ func (h *Handler) DeleteClient(ctx *gin.Context) {
 
 	} else if err != nil {
 		ctx.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Check if client exists
-	clientId := ctx.Param("clientId")
-	if _, ok := session.Spec.Clients[clientId]; !ok {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": "client does not exist"})
 		return
 	}
 

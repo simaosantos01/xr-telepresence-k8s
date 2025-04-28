@@ -13,7 +13,7 @@ import (
 
 type SessionInterface interface {
 	List(opts metav1.ListOptions, ctx context.Context) (*sessionv1alpha1.SessionList, error)
-	Get(name string, opts metav1.GetOptions, ctx context.Context) (*sessionv1alpha1.Session, error)
+	Get(ctx context.Context, name string, opts metav1.GetOptions) (*sessionv1alpha1.Session, error)
 	Create(session *sessionv1alpha1.Session, ctx context.Context) (*sessionv1alpha1.Session, error)
 	PatchClients(ctx context.Context, sessionName string, session *sessionv1alpha1.Session, patchData []byte, opts metav1.PatchOptions) (*sessionv1alpha1.Session, error)
 	Delete(name string, opts metav1.DeleteOptions, ctx context.Context) error
@@ -37,7 +37,7 @@ func (c *sessionClient) List(opts metav1.ListOptions, ctx context.Context) (*ses
 	return &result, err
 }
 
-func (c *sessionClient) Get(name string, opts metav1.GetOptions, ctx context.Context) (*sessionv1alpha1.Session, error) {
+func (c *sessionClient) Get(ctx context.Context, name string, opts metav1.GetOptions) (*sessionv1alpha1.Session, error) {
 	result := sessionv1alpha1.Session{}
 	err := c.restClient.
 		Get().

@@ -17,7 +17,8 @@ func main() {
 	v1 := router.Group("session-manager/v1")
 	{
 		v1.POST("/session", handler.CreateSession)
-		v1.GET("/session", handler.GetSession)
+		v1.GET("/session", handler.GetSessions)
+		v1.GET("/session/:sessionId", handler.GetSession)
 		v1.DELETE("/session", handler.DeleteSession)
 
 		v1.POST("/session/:sessionId/client", handler.CreateClient)
