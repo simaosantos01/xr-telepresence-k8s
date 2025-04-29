@@ -19,6 +19,10 @@ func HashStatus(status *sessionv1alpha1.SessionStatus) string {
 }
 
 func SetStatusHashAnnotation(hash string, session *sessionv1alpha1.Session) {
+	if session.Annotations == nil {
+		session.Annotations = make(map[string]string)
+	}
+
 	session.Annotations["statusHash"] = hash
 }
 
