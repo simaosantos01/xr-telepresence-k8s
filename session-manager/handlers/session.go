@@ -66,7 +66,7 @@ func (h *Handler) CreateSession(ctx *gin.Context) {
 		}
 	}
 
-	ctx.Header("Location", ctx.Request.URL.Path+"?id="+sessionName)
+	ctx.Header("Location", ctx.Request.URL.Path+"/"+sessionName)
 	ctx.JSON(http.StatusCreated, nil)
 }
 
@@ -108,6 +108,9 @@ func findSession(
 			return nil, err
 		}
 
+		sessionSum.Spec.TimeoutSeconds = session.Spec.TimeoutSeconds
+		sessionSum.Spec.ReutilizeTimeoutSeconds = session.Spec.ReutilizeTimeoutSeconds
+
 		if len(session.Spec.SessionPodTemplates.Items) != 0 {
 			sessionSum.Spec.SessionPodTemplates = session.Spec.SessionPodTemplates
 			sessionSum.Status.Conditions = session.Status.Conditions
@@ -142,7 +145,7 @@ func (h *Handler) GetSessions(ctx *gin.Context) {
 		for _, session := range sessions.Items {
 			location := make(map[string]string)
 			location["session"] = session.Name
-			location["uri"] = ctx.Request.URL.Path + "?id=" + session.Name
+			location["uri"] = ctx.Request.URL.Path + "/" + session.Name
 			sessionsLocation = append(sessionsLocation, location)
 		}
 
@@ -153,15 +156,11 @@ func (h *Handler) GetSessions(ctx *gin.Context) {
 }
 
 func (h *Handler) DeleteSession(ctx *gin.Context) {
-	name, ok := ctx.GetQuery("id")
-	if !ok {
-		ctx.JSON(http.StatusNotFound, nil)
-		return
-	}
+	sessionId := ctx.Param("sessionId")
 
 	deleted := false
 	for _, sessionClient := range h.clusterClientMap {
-		if err := sessionClient.Sessions("default").Delete(name, metav1.DeleteOptions{}, ctx); err != nil &&
+		if err := sessionClient.Sessions("default").Delete(sessionId, metav1.DeleteOptions{}, ctx); err != nil &&
 			!errors.IsNotFound(err) {
 
 			ctx.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})

@@ -19,7 +19,7 @@ func main() {
 		v1.POST("/session", handler.CreateSession)
 		v1.GET("/session", handler.GetSessions)
 		v1.GET("/session/:sessionId", handler.GetSession)
-		v1.DELETE("/session", handler.DeleteSession)
+		v1.DELETE("/session/:sessionId", handler.DeleteSession)
 
 		v1.POST("/session/:sessionId/client", handler.CreateClient)
 		v1.GET("/session/:sessionId/client", handler.GetClients)
