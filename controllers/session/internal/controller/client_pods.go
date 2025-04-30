@@ -11,7 +11,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -43,6 +42,7 @@ func (r *SessionReconciler) ReconcileClientPods(
 	namespace string,
 	session *sessionv1alpha1.Session,
 	gcRegistrations []gcv1alpha1.GCRegistration,
+	ingressServiceExternalIp *string,
 ) ([]corev1.Pod, error) {
 
 	logger := log.FromContext(ctx)
@@ -96,7 +96,6 @@ func (r *SessionReconciler) ReconcileClientPods(
 	manageGCRegistrations(ctx, r.Client, session, allocationMap, templatePodToReutilizeMap, gcRegistrations)
 
 	// reconcile workload
-	ingressServiceExternalIp := getIngressServiceExternalIp(ctx, r.Client)
 	podsToSpawn := reconcilePods(allocationMap, session.Status.Clients, templatePodMap, ingressServiceExternalIp)
 	return podsToSpawn, nil
 }
@@ -399,22 +398,6 @@ func podIsEmpty(pod *pod) bool {
 	}
 
 	return empty
-}
-
-func getIngressServiceExternalIp(ctx context.Context, rClient client.Client) *string {
-	var svc corev1.Service
-	name := "ingress-nginx-controller"
-	namespace := "ingress-nginx"
-
-	if err := rClient.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, &svc); err != nil {
-		return nil
-	}
-
-	if len(svc.Status.LoadBalancer.Ingress) > 0 {
-		return &svc.Status.LoadBalancer.Ingress[0].IP
-	}
-
-	return nil
 }
 
 func reconcilePods(

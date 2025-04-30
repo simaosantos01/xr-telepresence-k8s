@@ -42,7 +42,12 @@ func (r *GCReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Re
 			logger.Error(err, "unable to get session resource")
 			return ctrl.Result{}, err
 
-		} else if err == nil {
+		} else if err != nil {
+			if err := r.Delete(ctx, &registration); err != nil && !errors.IsNotFound(err) {
+				logger.Error(err, "unable to delete registration")
+				return ctrl.Result{}, err
+			}
+		} else {
 			var pod corev1.Pod
 			namespacedName := types.NamespacedName{Namespace: registration.Spec.Session.Namespace, Name: registration.Name}
 

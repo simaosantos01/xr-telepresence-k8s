@@ -60,10 +60,15 @@ type ClientStatus struct {
 	PodStatus  map[string]PodStatus `json:"podStatus"`
 }
 
+type SessionPodsStatus struct {
+	Conditions []metav1.Condition   `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
+	PodsStatus map[string]PodStatus `json:"podsStatus,omitempty"`
+}
+
 // SessionStatus defines the observed state of Session.
 type SessionStatus struct {
-	Conditions []metav1.Condition      `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
-	Clients    map[string]ClientStatus `json:"clients,omitempty"`
+	SessionPods SessionPodsStatus       `json:"sessionPods,omitempty"`
+	Clients     map[string]ClientStatus `json:"clients,omitempty"`
 }
 
 // +kubebuilder:object:root=true

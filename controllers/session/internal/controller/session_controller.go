@@ -22,6 +22,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	gcv1alpha1 "mr.telepresence/gc/api/v1alpha1"
 	sessionv1alpha1 "mr.telepresence/session/api/v1alpha1"
 	"mr.telepresence/session/internal/controller/utils"
@@ -74,8 +75,12 @@ func (r *SessionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 
-	if len(session.Spec.Clients) != 0 && len(session.Spec.SessionPodTemplates.Items) > 0 {
-		if err := r.ReconcileSessionPods(ctx, req.Namespace, &session); err != nil {
+	ingessServiceExternalIp := getIngressServiceExternalIp(ctx, r.Client)
+
+	if len(session.Spec.SessionPodTemplates.Items) > 0 {
+		if err := r.ReconcileSessionPods(ctx, req.Namespace, &session, gcRegistrations.Items,
+			ingessServiceExternalIp); err != nil {
+
 			r.Status().Update(ctx, &session)
 			return ctrl.Result{}, err
 		}
@@ -84,7 +89,8 @@ func (r *SessionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	var clientPodsToSpawn []corev1.Pod
 	if len(session.Spec.ClientPodTemplates.Items) > 0 {
 		var err error
-		clientPodsToSpawn, err = r.ReconcileClientPods(ctx, req.Namespace, &session, gcRegistrations.Items)
+		clientPodsToSpawn, err = r.ReconcileClientPods(ctx, req.Namespace, &session, gcRegistrations.Items,
+			ingessServiceExternalIp)
 
 		if err != nil {
 			return ctrl.Result{}, err
@@ -116,6 +122,22 @@ func (r *SessionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func getIngressServiceExternalIp(ctx context.Context, rClient client.Client) *string {
+	var svc corev1.Service
+	name := "ingress-nginx-controller"
+	namespace := "ingress-nginx"
+
+	if err := rClient.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, &svc); err != nil {
+		return nil
+	}
+
+	if len(svc.Status.LoadBalancer.Ingress) > 0 {
+		return &svc.Status.LoadBalancer.Ingress[0].IP
+	}
+
+	return nil
 }
 
 const (

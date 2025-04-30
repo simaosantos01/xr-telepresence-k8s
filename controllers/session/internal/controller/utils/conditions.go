@@ -47,7 +47,7 @@ func SetReadyCondition(
 func containsCondition(session *telepresencev1alpha1.Session, conditionType ConditionType) int {
 	index := -1
 
-	for i, condition := range session.Status.Conditions {
+	for i, condition := range session.Status.SessionPods.Conditions {
 		if condition.Type == string(conditionType) {
 			index = i
 		}
@@ -56,7 +56,8 @@ func containsCondition(session *telepresencev1alpha1.Session, conditionType Cond
 }
 
 func removeConditionAtIndex(session *telepresencev1alpha1.Session, index int) {
-	session.Status.Conditions = append(session.Status.Conditions[:index], session.Status.Conditions[index+1:]...)
+	session.Status.SessionPods.Conditions =
+		append(session.Status.SessionPods.Conditions[:index], session.Status.SessionPods.Conditions[index+1:]...)
 }
 
 func appendCondition(
@@ -74,5 +75,5 @@ func appendCondition(
 		LastTransitionTime: metav1.Time{Time: time.Now()},
 	}
 
-	session.Status.Conditions = append(session.Status.Conditions, condition)
+	session.Status.SessionPods.Conditions = append(session.Status.SessionPods.Conditions, condition)
 }
