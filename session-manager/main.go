@@ -26,6 +26,8 @@ func main() {
 		v1.GET("/session/:sessionId/client/:clientId", handler.GetClient)
 		v1.PATCH("/session/:sessionId/client/:clientId", handler.UpdateClient)
 		v1.DELETE("session/:sessionId/client/:clientId", handler.DeleteClient)
+
+		v1.GET("/ping", handler.GetPingServers)
 	}
 
 	router.Run(":8080")

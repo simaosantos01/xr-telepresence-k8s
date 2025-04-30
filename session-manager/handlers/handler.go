@@ -2,10 +2,12 @@ package handlers
 
 import (
 	"errors"
-	k8sClient "mr.telepresence/session-manager/k8s-client"
 	"os"
 
+	k8sClient "mr.telepresence/session-manager/k8s-client"
+
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -15,8 +17,9 @@ import (
 )
 
 type Handler struct {
-	clusterClientMap map[string]*k8sClient.SessionClient
-	sessionTemplates map[string]*SessionTemplate
+	clusterClientsetMap map[string]*kubernetes.Clientset
+	clusterClientMap    map[string]*k8sClient.SessionClient
+	sessionTemplates    map[string]*SessionTemplate
 }
 
 // Reference:
@@ -34,7 +37,8 @@ func ConfigHandler() (*Handler, error) {
 
 	k8sClient.AddToScheme(scheme.Scheme)
 
-	clusterSessionClientMap := make(map[string]*k8sClient.SessionClient, len(apiConfig.Contexts))
+	clusterClientMap := make(map[string]*k8sClient.SessionClient, len(apiConfig.Contexts))
+	clusterClientsetMap := make(map[string]*kubernetes.Clientset, len(apiConfig.Contexts))
 	for contextName := range apiConfig.Contexts {
 		kubeConfig, err := buildConfigWithContext(contextName, kubeConfigPath)
 		if err != nil {
@@ -46,7 +50,13 @@ func ConfigHandler() (*Handler, error) {
 			return nil, err
 		}
 
-		clusterSessionClientMap[contextName] = client
+		clientset, err := kubernetes.NewForConfig(kubeConfig)
+		if err != nil {
+			return nil, err
+		}
+
+		clusterClientMap[contextName] = client
+		clusterClientsetMap[contextName] = clientset
 	}
 
 	templates, err := readTemplates()
@@ -54,7 +64,10 @@ func ConfigHandler() (*Handler, error) {
 		return nil, err
 	}
 
-	return &Handler{clusterClientMap: clusterSessionClientMap, sessionTemplates: templates}, nil
+	return &Handler{
+		clusterClientsetMap: clusterClientsetMap,
+		clusterClientMap:    clusterClientMap,
+		sessionTemplates:    templates}, nil
 }
 
 func buildConfigWithContext(context string, kubeconfigPath string) (*rest.Config, error) {
