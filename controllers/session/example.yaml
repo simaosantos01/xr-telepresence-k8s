@@ -2,7 +2,7 @@ apiVersion: core.mr.telepresence/v1alpha1
 kind: Session
 metadata:
   labels:
-    app.kubernetes.io/name: telepresencekubctrl
+    app.kubernetes.io/name: telepresence
     app.kubernetes.io/managed-by: kustomize
   name: session-1
 spec:

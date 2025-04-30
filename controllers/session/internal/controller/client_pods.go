@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -10,6 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -94,7 +96,8 @@ func (r *SessionReconciler) ReconcileClientPods(
 	manageGCRegistrations(ctx, r.Client, session, allocationMap, templatePodToReutilizeMap, gcRegistrations)
 
 	// reconcile workload
-	podsToSpawn := reconcilePods(allocationMap, session.Status.Clients, templatePodMap)
+	ingressServiceExternalIp := getIngressServiceExternalIp(ctx, r.Client)
+	podsToSpawn := reconcilePods(allocationMap, session.Status.Clients, templatePodMap, ingressServiceExternalIp)
 	return podsToSpawn, nil
 }
 
@@ -398,10 +401,27 @@ func podIsEmpty(pod *pod) bool {
 	return empty
 }
 
+func getIngressServiceExternalIp(ctx context.Context, rClient client.Client) *string {
+	var svc corev1.Service
+	name := "ingress-nginx-controller"
+	namespace := "ingress-nginx"
+
+	if err := rClient.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, &svc); err != nil {
+		return nil
+	}
+
+	if len(svc.Status.LoadBalancer.Ingress) > 0 {
+		return &svc.Status.LoadBalancer.Ingress[0].IP
+	}
+
+	return nil
+}
+
 func reconcilePods(
 	allocationMap map[string]allocationValue,
 	statusClients map[string]sessionv1alpha1.ClientStatus,
 	templatePodMap map[string]map[string]corev1.Pod,
+	ingressServiceExternalIp *string,
 ) []corev1.Pod {
 	podsToSpawn := []corev1.Pod{}
 
@@ -410,7 +430,7 @@ func reconcilePods(
 
 			if value, ok := templatePodMap[allocValue.PodTemplate.Name][pod.Name]; !ok {
 				// instance was not found, we have to spawn it
-				setClientStatusReadiness(false, pod.Name, pod.Clients, statusClients)
+				setClientStatusReadiness(false, pod.Name, pod.Clients, statusClients, "")
 
 				podsToSpawn = append(podsToSpawn, corev1.Pod{
 					ObjectMeta: metav1.ObjectMeta{
@@ -423,10 +443,10 @@ func reconcilePods(
 				// instance was found, we still have to check its status and report it
 				readyStatus := utils.ExtractReadyConditionStatusFromPod(&value)
 
-				if readyStatus == corev1.ConditionTrue {
-					setClientStatusReadiness(true, pod.Name, pod.Clients, statusClients)
+				if readyStatus == corev1.ConditionTrue && ingressServiceExternalIp != nil {
+					setClientStatusReadiness(true, pod.Name, pod.Clients, statusClients, *ingressServiceExternalIp)
 				} else {
-					setClientStatusReadiness(false, pod.Name, pod.Clients, statusClients)
+					setClientStatusReadiness(false, pod.Name, pod.Clients, statusClients, "")
 				}
 			}
 		}
@@ -440,6 +460,7 @@ func setClientStatusReadiness(
 	podName string,
 	podClients []podClient,
 	statusClients map[string]sessionv1alpha1.ClientStatus,
+	ingressServiceExternalIp string,
 ) {
 	for _, client := range podClients {
 		if value, ok := statusClients[client.Id]; ok {
@@ -447,6 +468,11 @@ func setClientStatusReadiness(
 
 			if podStatus, ok := value.PodStatus[podName]; ok {
 				podStatus.Ready = ready
+
+				if ingressServiceExternalIp != "" {
+					concatIngressExternalIpToPodPaths(ingressServiceExternalIp, &podStatus)
+				}
+
 				value.PodStatus[podName] = podStatus
 
 				if !ready {
@@ -463,6 +489,19 @@ func setClientStatusReadiness(
 			}
 			value.Ready = topReadiness
 			statusClients[client.Id] = value
+		}
+	}
+}
+
+func concatIngressExternalIpToPodPaths(ipAddress string, podStatus *sessionv1alpha1.PodStatus) {
+	for i := 0; i < len(podStatus.Paths); i++ {
+		if podStatus.Paths[i][0] == '/' {
+			podStatus.Paths[i] = fmt.Sprintf("https://%s%s", ipAddress, podStatus.Paths[i])
+
+		} else {
+			podStatus.Paths[i] = podStatus.Paths[i][len("https://"):]
+			podStatus.Paths[i] = podStatus.Paths[i][strings.Index(podStatus.Paths[i], "/"):]
+			podStatus.Paths[i] = fmt.Sprintf("https://%s%s", ipAddress, podStatus.Paths[i])
 		}
 	}
 }
