@@ -75,8 +75,10 @@ func (h *Handler) GetSession(ctx *gin.Context) {
 	session, err := findSession(ctx, sessionId, h.clusterClientMap)
 	if err != nil && errorIsSessionNotFound(err) {
 		ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
 	} else if err != nil {
 		ctx.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
 	}
 
 	ctx.JSON(http.StatusOK, session)
@@ -94,8 +96,11 @@ func findSession(
 			Clients: make(map[string]bool),
 		},
 		Status: sessionv1alpha1.SessionStatus{
-			Conditions: []metav1.Condition{},
-			Clients:    make(map[string]sessionv1alpha1.ClientStatus),
+			SessionPods: sessionv1alpha1.SessionPodsStatus{
+				Conditions: []metav1.Condition{},
+				PodsStatus: map[string]sessionv1alpha1.PodStatus{},
+			},
+			Clients: make(map[string]sessionv1alpha1.ClientStatus),
 		},
 	}
 
@@ -113,7 +118,7 @@ func findSession(
 
 		if len(session.Spec.SessionPodTemplates.Items) != 0 {
 			sessionSum.Spec.SessionPodTemplates = session.Spec.SessionPodTemplates
-			sessionSum.Status.Conditions = session.Status.Conditions
+			sessionSum.Status.SessionPods = session.Status.SessionPods
 		}
 
 		if len(sessionSum.Spec.ClientPodTemplates.Items) == 0 {

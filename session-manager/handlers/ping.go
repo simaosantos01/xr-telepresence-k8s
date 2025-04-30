@@ -16,10 +16,10 @@ func (h *Handler) GetPingServers(ctx *gin.Context) {
 		pingServers[cluster] = "problem getting ip"
 
 		if err == nil && len(svc.Status.LoadBalancer.Ingress) > 0 {
-			ip_address := svc.Status.LoadBalancer.Ingress[0].IP
+			ipAddress := svc.Status.LoadBalancer.Ingress[0].IP
 			port := svc.Status.LoadBalancer.Ingress[0].Ports[0].Port
 
-			pingServers[cluster] = fmt.Sprintf("udp://%s:%d", ip_address, port)
+			pingServers[cluster] = fmt.Sprintf("udp://%s:%d", ipAddress, port)
 		}
 	}
 
