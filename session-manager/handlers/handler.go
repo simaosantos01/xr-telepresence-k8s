@@ -39,18 +39,41 @@ func ConfigHandler() (*Handler, error) {
 
 	clusterClientMap := make(map[string]*k8sClient.SessionClient, len(apiConfig.Contexts))
 	clusterClientsetMap := make(map[string]*kubernetes.Clientset, len(apiConfig.Contexts))
+
+	// config main cluster clients if in cluster mode
+	cfg, err := rest.InClusterConfig()
+	if err == nil {
+		client, err := k8sClient.NewForConfig(cfg)
+		if err != nil {
+			return nil, err
+		}
+
+		clientset, err := kubernetes.NewForConfig(cfg)
+		if err != nil {
+			return nil, err
+		}
+		clusterClientMap["main"] = client
+		clusterClientsetMap["main"] = clientset
+	}
+
+	// config remaning cluster clients
+
+	if _, ok := clusterClientMap["main"]; ok {
+		delete(apiConfig.Contexts, "main")
+	}
+
 	for contextName := range apiConfig.Contexts {
-		kubeConfig, err := buildConfigWithContext(contextName, kubeConfigPath)
+		cfg, err := buildConfigWithContext(contextName, kubeConfigPath)
 		if err != nil {
 			return nil, err
 		}
 
-		client, err := k8sClient.NewForConfig(kubeConfig)
+		client, err := k8sClient.NewForConfig(cfg)
 		if err != nil {
 			return nil, err
 		}
 
-		clientset, err := kubernetes.NewForConfig(kubeConfig)
+		clientset, err := kubernetes.NewForConfig(cfg)
 		if err != nil {
 			return nil, err
 		}

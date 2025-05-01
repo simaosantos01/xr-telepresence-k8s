@@ -7,7 +7,7 @@ To run the session manager locally simply execute `$ go run . -k8sInClusterCfg=f
 Build docker image
 
 ```
-$ docker build -t session_manager --no-cache -f ./Dockerfile ../
+$ docker build -t simaosantos1230212/session-manager:latest --no-cache -f ./Dockerfile ../
 ```
 
 Load image into minikube cluster

@@ -14,7 +14,7 @@ func main() {
 		panic(err.Error())
 	}
 
-	v1 := router.Group("session-manager/v1")
+	v1 := router.Group("v1")
 	{
 		v1.POST("/session", handler.CreateSession)
 		v1.GET("/session", handler.GetSessions)

@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ping-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: udp-ping
+  template:
+    metadata:
+      labels:
+        app: udp-ping
+    spec:
+      containers:
+        - name: agones-ping
+          image: us-docker.pkg.dev/agones-images/release/agones-ping:1.48.0
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: udp-ping
+spec:
+  selector:
+    app: udp-ping
+  ports:
+    - protocol: UDP
+      port: 8080
+  type: LoadBalancer

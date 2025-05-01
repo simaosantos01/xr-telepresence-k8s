@@ -4,6 +4,6 @@ metadata:
   name: session-manager-role
   namespace: default
 rules:
-  - apiGroups: ["telepresence.mr.telepresence"]
+  - apiGroups: ["core.mr.telepresence"]
     resources: ["sessions"]
     verbs: ["get", "list", "watch", "create", "update", "delete", "patch"]
