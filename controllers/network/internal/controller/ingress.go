@@ -4,8 +4,6 @@ import (
 	"context"
 	"strings"
 
-	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -23,32 +21,15 @@ func (r *NetworkReconciler) reconcileIngress(
 
 	var ingress netv1.Ingress
 	namespacedName := types.NamespacedName{Name: "ingress", Namespace: "default"}
-	ingressScaffolded := false
-	if err := r.Client.Get(ctx, namespacedName, &ingress); err != nil && !errors.IsNotFound(err) {
+	if err := r.Client.Get(ctx, namespacedName, &ingress); err != nil {
 		logger.Error(err, "unable to get ingress resource")
 		return ctrl.Result{}, err
-
-	} else if err != nil {
-		ingressScaffolded = true
-		ingress = *scaffoldIngress()
 	}
 
-	setIngressPaths(&ingress)
 	ingressPodsSet, ingressUpdatedByGC := ingressGarbageCollection(&ingress, servicesMap)
 	ingressUpdatedByPub := publishToIngress(&ingress, servicesMap, ingressPodsSet)
 
-	if len(ingress.Spec.Rules[0].HTTP.Paths) == 0 {
-		// this is required because ingress is not valid with empty paths array :(
-		ingress.Spec.Rules[0].HTTP = nil
-	}
-
-	if ingressScaffolded {
-		if err := r.Create(ctx, &ingress); err != nil {
-			logger.Error(err, "unable to create ingress")
-			return ctrl.Result{}, err
-		}
-
-	} else if ingressUpdatedByGC || ingressUpdatedByPub {
+	if ingressUpdatedByGC || ingressUpdatedByPub {
 		if err := r.Update(ctx, &ingress); err != nil {
 			logger.Error(err, "unable to update ingress")
 			return ctrl.Result{}, err
@@ -117,33 +98,4 @@ func publishToIngress(
 
 	ingress.Spec.Rules[0].HTTP.Paths = paths
 	return updated
-}
-
-func setIngressPaths(ingress *netv1.Ingress) {
-	if ingress.Spec.Rules[0].HTTP == nil {
-		ingress.Spec.Rules[0].HTTP = &netv1.HTTPIngressRuleValue{Paths: []netv1.HTTPIngressPath{}}
-	}
-}
-
-func scaffoldIngress() *netv1.Ingress {
-	ingress := &netv1.Ingress{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "networking.k8s.io/v1",
-			Kind:       "Ingress",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Annotations: map[string]string{
-				"nginx.ingress.kubernetes.io/use-regex":      "true",
-				"nginx.ingress.kubernetes.io/rewrite-target": "/$2",
-			},
-			Name:      "ingress",
-			Namespace: "default",
-		},
-		Spec: netv1.IngressSpec{
-			TLS:   []netv1.IngressTLS{{Hosts: []string{"localhost"}, SecretName: "tls"}},
-			Rules: []netv1.IngressRule{{IngressRuleValue: netv1.IngressRuleValue{}}},
-		},
-	}
-
-	return ingress
 }
