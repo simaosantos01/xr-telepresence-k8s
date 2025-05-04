@@ -3,18 +3,22 @@ FROM golang:1.23 AS builder
 ARG TARGETOS
 ARG TARGETARCH
 
-WORKDIR /workspace
+WORKDIR /workspace/gc
+COPY gc/go.mod go.mod
+COPY gc/api api/
+
+WORKDIR /workspace/session
 # Copy the Go Modules manifests
-COPY go.mod go.mod
-COPY go.sum go.sum
+COPY session/go.mod go.mod
+COPY session/go.sum go.sum
 # cache deps before building and copying source so that we don't need to re-download as much
 # and so that source changes don't invalidate our downloaded layer
 RUN go mod download
 
 # Copy the go source
-COPY cmd/main.go cmd/main.go
-COPY api/ api/
-COPY internal/ internal/
+COPY session/cmd/main.go cmd/main.go
+COPY session/api/ api/
+COPY session/internal/ internal/
 
 # Build
 # the GOARCH has not a default value to allow the binary be built according to the host where the command
@@ -27,7 +31,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o ma
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
 FROM gcr.io/distroless/static:nonroot
 WORKDIR /
-COPY --from=builder /workspace/manager .
+COPY --from=builder /workspace/session/manager .
 USER 65532:65532
 
 ENTRYPOINT ["/manager"]

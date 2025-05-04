@@ -43,7 +43,10 @@ type SessionReconciler struct {
 // +kubebuilder:rbac:groups=core.mr.telepresence,resources=sessions,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core.mr.telepresence,resources=sessions/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=core.mr.telepresence,resources=sessions/finalizers,verbs=update
-// +kubebuilder:rbac:groups=core.mr.telepresence,resources=gcregistrations,verbs=list;create;delete
+// +kubebuilder:rbac:groups=gc.mr.telepresence,resources=gcregistrations,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=namespaces,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.

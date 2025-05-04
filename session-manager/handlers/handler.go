@@ -12,6 +12,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/clientcmd/api"
+	"log"
 	sessionv1alpha1 "mr.telepresence/session/api/v1alpha1"
 	"sigs.k8s.io/yaml"
 )
@@ -56,25 +57,35 @@ func ConfigHandler() (*Handler, error) {
 		clusterClientsetMap["main"] = clientset
 	}
 
+	if err != nil {
+		log.Println(err.Error())
+	}
+
 	// config remaning cluster clients
 
 	if _, ok := clusterClientMap["main"]; ok {
 		delete(apiConfig.Contexts, "main")
+		log.Println("deleted")
 	}
 
 	for contextName := range apiConfig.Contexts {
+
+		log.Println("context: ", contextName)
 		cfg, err := buildConfigWithContext(contextName, kubeConfigPath)
 		if err != nil {
+			log.Println(err.Error())
 			return nil, err
 		}
 
 		client, err := k8sClient.NewForConfig(cfg)
 		if err != nil {
+			log.Println(err.Error())
 			return nil, err
 		}
 
 		clientset, err := kubernetes.NewForConfig(cfg)
 		if err != nil {
+			log.Println(err.Error())
 			return nil, err
 		}
 

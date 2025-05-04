@@ -7,3 +7,6 @@ rules:
   - apiGroups: ["core.mr.telepresence"]
     resources: ["sessions"]
     verbs: ["get", "list", "watch", "create", "update", "delete", "patch"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch", "create", "update", "delete", "patch"]

@@ -51,6 +51,11 @@ func ingressGarbageCollection(
 	// TODO: only http implemented
 	for i := 0; i < len(paths); i++ {
 		pathStr := paths[i].Path
+
+		if pathStr == "/session-manager(/|$)(.*)" {
+			continue
+		}
+
 		podNameFromPath := strings.Split(pathStr, "/")[1]
 		ingressPodsSet[podNameFromPath] = struct{}{}
 
