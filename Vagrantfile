@@ -6,6 +6,8 @@ Vagrant.configure("2") do |config|
     vb.cpus = 2
   end
 
+  config.vm.provision "shell", name: "install-dependencies", path: "vagrant-scripts/install-dependencies.sh"
+
   config.vm.define "cloud" do |cloud|
     cloud.vm.hostname = "cloud"
     cloud.vm.network "private_network", ip: "192.168.56.10"
