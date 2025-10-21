@@ -12,7 +12,7 @@ Pod from the middle of the set.
 
 ## Architecture
 
-TODO
+![](./docs/img/architecture.png)
 
 ## Features
 
